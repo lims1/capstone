@@ -64,7 +64,7 @@ import java.util.Map;
  * 
  * See the README file for a description of the algorithm, testing results, and other details.
  */
-public class SpectralKMeansTester extends AbstractJob {
+public class SpectralKMeansDriver extends AbstractJob {
 
   public static final double OVERSHOOT_MULTIPLIER = 2.0;
 
@@ -79,7 +79,7 @@ public class SpectralKMeansTester extends AbstractJob {
   static int ssvdIterations = 0;
 
   public static void main(String[] args) throws Exception {
-    ToolRunner.run(new SpectralKMeansTester(), args);
+    ToolRunner.run(new SpectralKMeansDriver(), args);
   }
 
   @Override
