@@ -17,6 +17,7 @@
 
 package org.apache.mahout.clustering.spectral.kmeans;
 
+import org.apache.commons.cli2.builder.DefaultOptionBuilder;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
@@ -44,7 +45,6 @@ import org.apache.mahout.math.hadoop.stochasticsvd.SSVDSolver;
 import org.apache.mahout.math.VectorWritable;
 
 import java.io.*;
-import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
@@ -69,9 +69,9 @@ public class SpectralKMeansDriver extends AbstractJob {
   public static final double OVERSHOOT_MULTIPLIER = 2.0;
 
   
-  public static final boolean USE_SSVD = true;
+  public static boolean use_ssvd = false;
   public static final boolean OUTPUT_TO_TEXTFile = true;
-  public static final boolean DELETE_TEMP_FILES = true;  
+  public static boolean keep_temp_files = true;  
   
   static long ssvdTime = -1;
   static long lanczosTime = -1;
@@ -81,7 +81,7 @@ public class SpectralKMeansDriver extends AbstractJob {
   public static void main(String[] args) throws Exception {
     ToolRunner.run(new SpectralKMeansDriver(), args);
   }
-
+  
   @Override
   public int run(String[] arg0)
     throws IOException, ClassNotFoundException, InstantiationException, IllegalAccessException, InterruptedException {
@@ -95,7 +95,9 @@ public class SpectralKMeansDriver extends AbstractJob {
     addOption(DefaultOptionCreator.convergenceOption().create());
     addOption(DefaultOptionCreator.maxIterationsOption().create());
     addOption(DefaultOptionCreator.overwriteOption().create());
-
+    addFlag("Delete calculation files", "f","Will delete calculation data on filesystem upon completion. Default is to keep these files.");
+    addFlag("Use SSVD Eigensolver", "f","Uses SSVD Eigensolver. Default is Lanczos solver.");
+    
     Map<String, List<String>> parsedArgs = parseArguments(arg0);
     if (parsedArgs == null) {
       return 0;
@@ -111,6 +113,15 @@ public class SpectralKMeansDriver extends AbstractJob {
     DistanceMeasure measure = ClassUtils.instantiateAs(measureClass, DistanceMeasure.class);
     double convergenceDelta = Double.parseDouble(getOption(DefaultOptionCreator.CONVERGENCE_DELTA_OPTION));
     int maxIterations = Integer.parseInt(getOption(DefaultOptionCreator.MAX_ITERATIONS_OPTION));
+    
+    if(hasOption("f"))
+    {
+    	keep_temp_files = false;
+    }
+    if(hasOption("e"))
+    {
+    	use_ssvd = true;
+    }
 
     run(conf, input, output, numDims, clusters, measure, convergenceDelta, maxIterations);
 
@@ -166,7 +177,7 @@ public class SpectralKMeansDriver extends AbstractJob {
     
     Path data;
 
-   if(USE_SSVD){ // Otherwise uses slower Lanczos
+   if(use_ssvd){ // Otherwise uses slower Lanczos
 	   
 	// SSVD requires an array of Paths to function. So we pass in an array of length one
     Path[] LPath = new Path[1];
@@ -252,7 +263,7 @@ public class SpectralKMeansDriver extends AbstractJob {
 	KMeansDriver.run(conf, data, initialclusters, answer,
 	    		measure,convergenceDelta, maxIterations, true, 0.0, false);
  
-	if(DELETE_TEMP_FILES){
+	if(!keep_temp_files){
 		HadoopUtil.delete(conf, outputCalc);
 		
 	}
