@@ -73,9 +73,6 @@ public class SpectralKMeansDriver extends AbstractJob {
   public static final boolean OUTPUT_TO_TEXTFile = true;
   public static boolean keep_temp_files = true;  
   
-  static long ssvdTime = -1;
-  static long lanczosTime = -1;
-  static long normalizeTime = -1; 
   static int ssvdIterations = 0;
 
   public static void main(String[] args) throws Exception {
@@ -96,7 +93,7 @@ public class SpectralKMeansDriver extends AbstractJob {
     addOption(DefaultOptionCreator.maxIterationsOption().create());
     addOption(DefaultOptionCreator.overwriteOption().create());
     addFlag("Delete calculation files", "f","Will delete calculation data on filesystem upon completion. Default is to keep these files.");
-    addFlag("Use SSVD Eigensolver", "f","Uses SSVD Eigensolver. Default is Lanczos solver.");
+    addFlag("Use SSVD Eigensolver", "e","Uses SSVD Eigensolver. Default is Lanczos solver.");
     
     Map<String, List<String>> parsedArgs = parseArguments(arg0);
     if (parsedArgs == null) {
@@ -114,11 +111,11 @@ public class SpectralKMeansDriver extends AbstractJob {
     double convergenceDelta = Double.parseDouble(getOption(DefaultOptionCreator.CONVERGENCE_DELTA_OPTION));
     int maxIterations = Integer.parseInt(getOption(DefaultOptionCreator.MAX_ITERATIONS_OPTION));
     
-    if(hasOption("f"))
+    if(hasOption("Delete calculation files"))
     {
     	keep_temp_files = false;
     }
-    if(hasOption("e"))
+    if(hasOption("Use SSVD Eigensolver"))
     {
     	use_ssvd = true;
     }
@@ -172,7 +169,7 @@ public class SpectralKMeansDriver extends AbstractJob {
     
     //Calculate the normalized Laplacian of the form: L = D^(-0.5)AD^(-0.5)
     DistributedRowMatrix L = VectorMatrixMultiplicationJob.runJob(affSeqFiles, D,
-    		new Path(outputCalc, "laplacian-" + (System.nanoTime() & 0xFF)), new Path(outputCalc, outputCalc));
+    		new Path(outputCalc, "laplacian"), new Path(outputCalc, outputCalc));
    	L.setConf(depConf);
     
     Path data;
@@ -201,9 +198,7 @@ public class SpectralKMeansDriver extends AbstractJob {
   	// machine it must be set to false. The documentation says that the default is false but 
   	// the default is actually true. 
 
-  	ssvdTime = System.currentTimeMillis();
   	solveIt.run();
-  	ssvdTime = System.currentTimeMillis() - ssvdTime;
   	data = new Path(solveIt.getUPath()); // Needs "new Path", getUPath method returns a String
   	
    }else{
@@ -215,8 +210,8 @@ public class SpectralKMeansDriver extends AbstractJob {
 	    int overshoot = (int) ((double) clusters * OVERSHOOT_MULTIPLIER);
 	    DistributedLanczosSolver solver = new DistributedLanczosSolver();
 	    LanczosState state = new LanczosState(L, overshoot, solver.getInitialVector(L));
-	    Path lanczosSeqFiles = new Path(outputCalc, "eigenvectors-" + (System.nanoTime() & 0xFF));
-	    lanczosTime = System.currentTimeMillis();
+	    Path lanczosSeqFiles = new Path(outputCalc, "eigenvectors");
+	    
 	    solver.runJob(conf,
 	                  state,
 	                  overshoot,
@@ -233,7 +228,7 @@ public class SpectralKMeansDriver extends AbstractJob {
 	    				true, 
 	    				1.0, 
 	    				clusters);
-	    lanczosTime = System.currentTimeMillis() - lanczosTime;
+
 	    Path cleanedEigens = verifier.getCleanedEigensPath();
 	    DistributedRowMatrix W = new DistributedRowMatrix(cleanedEigens, new Path(cleanedEigens, "tmp"), clusters, numDims);
 	    W.setConf(depConf);
@@ -244,10 +239,10 @@ public class SpectralKMeansDriver extends AbstractJob {
 
    		// Normalize the rows of Wt to unit length
    		// normalize is important because it reduces the occurrence of two unique clusters  combining into one 
-	   Path unitVectors = new Path(outputCalc, "unitvectors-" + (System.nanoTime() & 0xFF));
-	   normalizeTime = System.currentTimeMillis();
+	   Path unitVectors = new Path(outputCalc, "unitvectors");
+
 	   UnitVectorizerJob.runJob(data, unitVectors);
-	   normalizeTime = System.currentTimeMillis() - normalizeTime;
+
 	   DistributedRowMatrix Wt = new DistributedRowMatrix(unitVectors, new Path(unitVectors, "tmp"), clusters, numDims);
 	   Wt.setConf(depConf);
 	   data = Wt.getRowPath();
@@ -259,13 +254,13 @@ public class SpectralKMeansDriver extends AbstractJob {
     		new Path(output, Cluster.INITIAL_CLUSTERS_DIR), clusters, measure);
    
     // Run the KMeansDriver
-    Path answer = new Path(output, "kmeans_out-" + (System.nanoTime() & 0xFF));
+    Path answer = new Path(output, "kmeans_out");
 	KMeansDriver.run(conf, data, initialclusters, answer,
 	    		measure,convergenceDelta, maxIterations, true, 0.0, false);
  
+	
 	if(!keep_temp_files){
 		HadoopUtil.delete(conf, outputCalc);
-		
 	}
 	
 	
@@ -273,19 +268,16 @@ public class SpectralKMeansDriver extends AbstractJob {
 	// The rest of the lines are point_number,cluster_number 
 	// For it to run the FileWriter path should be changed according to your preference
 	if(OUTPUT_TO_TEXTFile){   
+		
 		// Read through the cluster assignments
 	    Path clusteredPointsPath = new Path(answer, "clusteredPoints");
 	    Path inputPath = new Path(clusteredPointsPath, "part-m-00000");
 	    
-	    FileWriter fstream = new FileWriter("result" + (System.nanoTime() & 0xFF) + ".txt");
+	    FileWriter fstream = new FileWriter("result" + output + ".txt");
 	    BufferedWriter out = new BufferedWriter(fstream);
 
 	    int id = 0;
 	    try{
-	    	out.write(">  " + input.toString() +  "\n");
-	    	out.write(">  " +  "ssvdTime = "  + ssvdTime + " lanczosTime = " + lanczosTime 
-	    				+ " normalizeTime = " + normalizeTime +  "\n");
-	    	out.write(">  " + "ssvdIterations = " + ssvdIterations + "  total: " + (ssvdTime + normalizeTime) +  "\n");
 	    	
 	    for (Pair<IntWritable,VectorWritable> record 
 	         : new SequenceFileIterable<IntWritable, VectorWritable>(inputPath, new Configuration())) {
