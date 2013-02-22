@@ -66,14 +66,7 @@ import java.util.Map;
  */
 public class SpectralKMeansDriver extends AbstractJob {
 
-  public static final double OVERSHOOT_MULTIPLIER = 2.0;
-
-  
-  public static boolean use_ssvd = false;
-  public static final boolean OUTPUT_TO_TEXTFile = true;
-  public static boolean keep_temp_files = true;  
-  
-  static int ssvdIterations = 0;
+  public static final double OVERSHOOTMULTIPLIER = 2.0;
 
   public static void main(String[] args) throws Exception {
     ToolRunner.run(new SpectralKMeansDriver(), args);
@@ -92,8 +85,8 @@ public class SpectralKMeansDriver extends AbstractJob {
     addOption(DefaultOptionCreator.convergenceOption().create());
     addOption(DefaultOptionCreator.maxIterationsOption().create());
     addOption(DefaultOptionCreator.overwriteOption().create());
-    addFlag("Delete calculation files", "f","Will delete calculation data on filesystem upon completion. Default is to keep these files.");
-    addFlag("Use SSVD Eigensolver", "e","Uses SSVD Eigensolver. Default is Lanczos solver.");
+    addFlag("deletecalc", "f","Will delete calculation data on filesystem upon completion. Default is to keep these files.");
+    addFlag("ssvd", "e","Uses SSVD Eigensolver. Default is Lanczos solver.");
     
     Map<String, List<String>> parsedArgs = parseArguments(arg0);
     if (parsedArgs == null) {
@@ -111,16 +104,19 @@ public class SpectralKMeansDriver extends AbstractJob {
     double convergenceDelta = Double.parseDouble(getOption(DefaultOptionCreator.CONVERGENCE_DELTA_OPTION));
     int maxIterations = Integer.parseInt(getOption(DefaultOptionCreator.MAX_ITERATIONS_OPTION));
     
-    if(hasOption("Delete calculation files"))
+    boolean keepCalcFiles = true;
+    boolean ssvd = false;
+    
+    if(hasOption("deletecalc"))
     {
-    	keep_temp_files = false;
+    	keepCalcFiles = false;
     }
-    if(hasOption("Use SSVD Eigensolver"))
+    if(hasOption("ssvd"))
     {
-    	use_ssvd = true;
+    	ssvd = true;
     }
 
-    run(conf, input, output, numDims, clusters, measure, convergenceDelta, maxIterations);
+    run(conf, input, output, numDims, clusters, measure, convergenceDelta, maxIterations, keepCalcFiles, ssvd);
 
     return 0;
   }
@@ -145,7 +141,9 @@ public class SpectralKMeansDriver extends AbstractJob {
           int clusters,
           DistanceMeasure measure,
           double convergenceDelta,
-          int maxIterations)
+          int maxIterations,
+          boolean keepCalcFiles,
+          boolean ssvd)
     throws IOException, InterruptedException, ClassNotFoundException {
     
     Path outputCalc = new Path(output, "calculations");
@@ -174,25 +172,27 @@ public class SpectralKMeansDriver extends AbstractJob {
     
     Path data;
 
-   if(use_ssvd){ // Otherwise uses slower Lanczos
-	   
+   if(ssvd)
+   	{ // Otherwise uses slower Lanczos   
 	// SSVD requires an array of Paths to function. So we pass in an array of length one
     Path[] LPath = new Path[1];
    	LPath[0] = L.getRowPath();
-
    	
    	Path SSVDout = new Path(outputCalc, "SSVD");
-   	SSVDSolver solveIt = new SSVDSolver(depConf, 
-   										LPath, 
-   										SSVDout, 
-   										1000, // Vertical height of a q-block
-   										clusters, 
-   										15, // Oversampling 
-   										100); // # of reduce tasks
+   	
+   	SSVDSolver solveIt = 
+   	new SSVDSolver(	depConf, 
+   					LPath, 
+   					SSVDout, 
+   					1000, // Vertical height of a q-block
+   					clusters, 
+   					15, // Oversampling 
+   					100); // # of reduce tasks
+   	
   	solveIt.setComputeV(false); 
   	solveIt.setComputeU(true);
   	solveIt.setOverwrite(true);
-  	solveIt.setQ(ssvdIterations); // Set the power iterations (0 was fastest most accurate in testing)
+  	solveIt.setQ(0); // Set the power iterations (0 was fastest most accurate in testing)
   	solveIt.setBroadcast(false); 
   	// setBroadcast should be set to true is running on a distributed system, but on a single
   	// machine it must be set to false. The documentation says that the default is false but 
@@ -201,13 +201,14 @@ public class SpectralKMeansDriver extends AbstractJob {
   	solveIt.run();
   	data = new Path(solveIt.getUPath()); // Needs "new Path", getUPath method returns a String
   	
-   }else{
-
+   }
+   else
+   {
 	    // Perform eigen-decomposition using LanczosSolver
 	    // since some of the eigen-output is spurious and will be eliminated
 	    // upon verification, we have to aim to overshoot and then discard
 	    // unnecessary vectors later
-	    int overshoot = (int) ((double) clusters * OVERSHOOT_MULTIPLIER);
+	    int overshoot = (int) ((double) clusters * OVERSHOOTMULTIPLIER);
 	    DistributedLanczosSolver solver = new DistributedLanczosSolver();
 	    LanczosState state = new LanczosState(L, overshoot, solver.getInitialVector(L));
 	    Path lanczosSeqFiles = new Path(outputCalc, "eigenvectors");
@@ -259,39 +260,11 @@ public class SpectralKMeansDriver extends AbstractJob {
 	    		measure,convergenceDelta, maxIterations, true, 0.0, false);
  
 	
-	if(!keep_temp_files){
+	if(!keepCalcFiles){
 		HadoopUtil.delete(conf, outputCalc);
 	}
-	
-	
-	// Prints out results into a text file. Format of three info lines that begin with >
-	// The rest of the lines are point_number,cluster_number 
-	// For it to run the FileWriter path should be changed according to your preference
-	if(OUTPUT_TO_TEXTFile){   
-		
-		// Read through the cluster assignments
-	    Path clusteredPointsPath = new Path(answer, "clusteredPoints");
-	    Path inputPath = new Path(clusteredPointsPath, "part-m-00000");
-	    
-	    FileWriter fstream = new FileWriter("result" + output + ".txt");
-	    BufferedWriter out = new BufferedWriter(fstream);
-
-	    int id = 0;
-	    try{
-	    	
-	    for (Pair<IntWritable,VectorWritable> record 
-	         : new SequenceFileIterable<IntWritable, VectorWritable>(inputPath, new Configuration())) {
-
-	    	out.write("" + id + "," + record.getFirst().get() + "\n");
-	    	id++;
-	    	}
-	    }catch (Exception e){
-		     System.out.println("IO ERROR");		    
-	    
-	    } out.close();
-	}
     
-  }
+  	}
   }
 
 
