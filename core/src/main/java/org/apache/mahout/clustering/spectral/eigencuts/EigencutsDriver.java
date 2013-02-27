@@ -23,6 +23,7 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.util.ToolRunner;
 import org.apache.mahout.clustering.spectral.common.AffinityMatrixInputJob;
 import org.apache.mahout.clustering.spectral.common.MatrixDiagonalizeJob;
+import org.apache.mahout.clustering.spectral.common.UnitVectorizerJob;
 import org.apache.mahout.clustering.spectral.common.VectorMatrixMultiplicationJob;
 import org.apache.mahout.common.AbstractJob;
 import org.apache.mahout.common.HadoopUtil;
@@ -33,6 +34,7 @@ import org.apache.mahout.math.decomposer.lanczos.LanczosState;
 import org.apache.mahout.math.hadoop.DistributedRowMatrix;
 import org.apache.mahout.math.hadoop.decomposer.DistributedLanczosSolver;
 import org.apache.mahout.math.hadoop.decomposer.EigenVerificationJob;
+import org.apache.mahout.math.hadoop.stochasticsvd.SSVDSolver;
 import org.apache.mahout.math.stats.OnlineSummarizer;
 
 import java.io.IOException;
@@ -56,6 +58,9 @@ public class EigencutsDriver extends AbstractJob {
   public int run(String[] arg0) throws Exception {
 
     // set up command line arguments
+	Configuration conf = getConf();
+	addInputOption();
+	addOutputOption();
     addOption("half-life", "b", "Minimal half-life threshold", true);
     addOption("dimensions", "d", "Square dimensions of affinity matrix", true);
     addOption("epsilon", "e", "Half-life threshold coefficient", Double.toString(EPSILON_DEFAULT));
@@ -75,13 +80,13 @@ public class EigencutsDriver extends AbstractJob {
     if (hasOption(DefaultOptionCreator.OVERWRITE_OPTION)) {
       HadoopUtil.delete(getConf(), output);
     }
-    int dimensions = Integer.parseInt(getOption("dimensions"));
+    int numDims = Integer.parseInt(getOption("dimensions"));
     double halflife = Double.parseDouble(getOption("half-life"));
     double epsilon = Double.parseDouble(getOption("epsilon"));
     double tau = Double.parseDouble(getOption("tau"));
     int eigenrank = Integer.parseInt(getOption("eigenrank"));
 
-    run(getConf(), input, output, eigenrank, dimensions, halflife, epsilon, tau);
+    run(conf, input, output, numDims, eigenrank, halflife, epsilon, tau);
 
     return 0;
   }
@@ -93,7 +98,7 @@ public class EigencutsDriver extends AbstractJob {
    * @param input the Path to the directory containing input affinity tuples
    * @param output the Path to the output directory
    * @param eigenrank The number of top eigenvectors/eigenvalues to use
-   * @param dimensions the int number of dimensions of the square affinity matrix
+   * @param numDims the int number of dimensions of the square affinity matrix
    * @param halflife the double minimum half-life threshold
    * @param epsilon the double coefficient for setting minimum half-life threshold
    * @param tau the double tau threshold for cutting links in the affinity graph
@@ -101,7 +106,7 @@ public class EigencutsDriver extends AbstractJob {
   public static void run(Configuration conf,
                          Path input,
                          Path output,
-                         int dimensions,
+                         int numDims,
                          int eigenrank,
                          double halflife,
                          double epsilon,
@@ -111,44 +116,83 @@ public class EigencutsDriver extends AbstractJob {
     // create a few new Paths for temp files and transformations
     Path outputCalc = new Path(output, "calculations");
     Path outputTmp = new Path(output, "temporary");
+     
+	// Take in the raw CSV text file and split it ourselves,
+	// creating our own SequenceFiles for the matrices to read later 
+	// (similar to the style of syntheticcontrol.canopy.InputMapper)
+	Path affSeqFiles = new Path(outputCalc, "seqfile");
+	AffinityMatrixInputJob.runJob(input, affSeqFiles, numDims, numDims);
+	
+	// Construct the affinity matrix using the newly-created sequence files
+	DistributedRowMatrix A = 
+			new DistributedRowMatrix(affSeqFiles, new Path(outputTmp, "afftmp"), numDims, numDims); 
+	
+	Configuration depConf = new Configuration(conf);
+	A.setConf(depConf);
 
-    DistributedRowMatrix A = AffinityMatrixInputJob.runJob(input, outputCalc, dimensions);
-    Vector D = MatrixDiagonalizeJob.runJob(A.getRowPath(), dimensions);
+	// Construct the diagonal matrix D (represented as a vector)
+	Vector D = MatrixDiagonalizeJob.runJob(affSeqFiles, numDims);
 
     long numCuts;
+    Path data;
     do {
       // first three steps are the same as spectral k-means:
       // 1) calculate D from A
       // 2) calculate L = D^-0.5 * A * D^-0.5
       // 3) calculate eigenvectors of L
 
-      DistributedRowMatrix L =
-          VectorMatrixMultiplicationJob.runJob(A.getRowPath(), D,
-              new Path(outputCalc, "laplacian-" + (System.nanoTime() & 0xFF)));
-      L.setConf(new Configuration(conf));
+    	//Calculate the normalized Laplacian of the form: L = D^(-0.5)AD^(-0.5)
+		DistributedRowMatrix L = VectorMatrixMultiplicationJob.runJob(affSeqFiles, D,
+				new Path(outputCalc, "laplacian"), new Path(outputCalc, outputCalc));
+		L.setConf(depConf);
 
-      // eigendecomposition (step 3)
-      int overshoot = (int) ((double) eigenrank * OVERSHOOT_MULTIPLIER);
-      LanczosState state = new LanczosState(L, eigenrank,
-          new DistributedLanczosSolver().getInitialVector(L));
+		//(step 3) SSVD requires an array of Paths to function. So we pass in an array of length one
+		Path [] LPath = new Path[1];
+		LPath[0] = L.getRowPath();
+		
+		Path SSVDout = new Path(outputCalc, "SSVD");
+		
+		SSVDSolver solveIt = new SSVDSolver(
+				depConf, 
+				LPath, 
+				SSVDout, 
+				1000, // Vertical height of a q-block
+				eigenrank, 
+				15, // Oversampling 
+				100); // # of reduce tasks
+		
+		solveIt.setComputeV(false); 
+		solveIt.setComputeU(true);
+		solveIt.setOverwrite(true);
+		solveIt.setQ(0); // Set the power iterations (0 was fastest most accurate in testing)
+		solveIt.setBroadcast(false); 
+		// setBroadcast should be set to true is running on a distributed system, but on a single
+		// machine it must be set to false. The documentation says that the default is false but 
+		// the default is actually true. 
+		
+		solveIt.run();
+		data = new Path(solveIt.getUPath()); // Needs "new Path", getUPath method returns a String
 
-      DistributedRowMatrix U = performEigenDecomposition(conf, L, state, eigenrank, overshoot, outputCalc);
-      U.setConf(new Configuration(conf));
-      List<Double> eigenValues = Lists.newArrayList();
-      for (int i=0; i<eigenrank; i++) {
-        eigenValues.set(i, state.getSingularValue(i));
-      }
+		// Normalize the rows of Wt to unit length
+		// normalize is important because it reduces the occurrence of two unique clusters  combining into one 
+		Path unitVectors = new Path(outputCalc, "unitvectors");
+				
+		UnitVectorizerJob.runJob(data, unitVectors);
+				
+		DistributedRowMatrix Wt = new DistributedRowMatrix(
+						unitVectors, new Path(unitVectors, "tmp"), eigenrank, numDims);
+		Wt.setConf(depConf);
+		data = Wt.getRowPath();
+
+      Vector evs = solveIt.getSingularValues();
 
       // here's where things get interesting: steps 4, 5, and 6 are unique
       // to this algorithm, and depending on the final output, steps 1-3
       // may be repeated as well
 
-      // helper method, since apparently List and Vector objects don't play nicely
-      Vector evs = listToVector(eigenValues);
-
       // calculate sensitivities (step 4 and step 5)
       Path sensitivities = new Path(outputCalc, "sensitivities-" + (System.nanoTime() & 0xFF));
-      EigencutsSensitivityJob.runJob(evs, D, U.getRowPath(), halflife, tau, median(D), epsilon, sensitivities);
+      EigencutsSensitivityJob.runJob(evs, D, Wt.getRowPath(), halflife, tau, median(D), epsilon, sensitivities);
 
       // perform the cuts (step 6)
       input = new Path(outputTmp, "nextAff-" + (System.nanoTime() & 0xFF));
@@ -158,7 +202,7 @@ public class EigencutsDriver extends AbstractJob {
       if (numCuts > 0) {
         // recalculate A
         A = new DistributedRowMatrix(input,
-                                     new Path(outputTmp, Long.toString(System.nanoTime())), dimensions, dimensions);
+                                     new Path(outputTmp, Long.toString(System.nanoTime())), numDims, numDims);
         A.setConf(new Configuration());
       }
     } while (numCuts > 0);
@@ -209,17 +253,5 @@ public class EigencutsDriver extends AbstractJob {
     return med.getMedian();
   }
 
-  /**
-   * Iteratively loops through the list, converting it to a Vector of double
-   * primitives worthy of other Mahout operations
-   */
-  private static Vector listToVector(Collection<Double> list) {
-    Vector retval = new DenseVector(list.size());
-    int index = 0;
-    for (Double d : list) {
-      retval.setQuick(index++, d);
-    }
-    return retval;
-  }
 
 }
