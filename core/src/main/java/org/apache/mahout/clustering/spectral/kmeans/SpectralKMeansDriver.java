@@ -45,19 +45,8 @@ import org.apache.mahout.math.hadoop.stochasticsvd.SSVDSolver;
 
 
 /**
- * Implementation of the EigenCuts spectral clustering algorithm.
- * This implementation is for testing and debugging. 
- * 
- * Using the variables below the user can:
- * 		select to use either SSVDSolver or DistributedLanczosSolver for the Eigen decomposition. 
- * 		change the number of iterations in SSVD
- * 		choose whether to keep the temp files that are created during a job
- * 		have the output printed to a text file 
- * 
- * All of the steps involved in testing have timers built around them and the result is printed at
- * the top of the output text file. 
- * 
- * See the README file for a description of the algorithm, testing results, and other details.
+ * Performs spectral k-means clustering on the top k eigenvectors of the input
+ * affinity matrix. 
  */
 public class SpectralKMeansDriver extends AbstractJob {
 
@@ -80,8 +69,7 @@ public class SpectralKMeansDriver extends AbstractJob {
 		addOption(DefaultOptionCreator.convergenceOption().create());
 		addOption(DefaultOptionCreator.maxIterationsOption().create());
 		addOption(DefaultOptionCreator.overwriteOption().create());
-		addFlag("deletecalc", "f","Will delete calculation data on filesystem upon completion. Default is to keep these files.");
-		addFlag("ssvd", "e","Uses SSVD Eigensolver. Default is Lanczos solver.");
+		addFlag("usessvd", "ssvd", "Uses SSVD as the eigensolver. Default is the Lanczos solver.");
 		
 		Map<String, List<String>> parsedArgs = parseArguments(arg0);
 		if (parsedArgs == null) {
@@ -100,10 +88,10 @@ public class SpectralKMeansDriver extends AbstractJob {
 		double convergenceDelta = Double.parseDouble(getOption(DefaultOptionCreator.CONVERGENCE_DELTA_OPTION));
 		int maxIterations = Integer.parseInt(getOption(DefaultOptionCreator.MAX_ITERATIONS_OPTION));
 		
-		boolean keepCalcFiles = (hasOption("deletecalc") ? false : true);
-		boolean ssvd = (hasOption("ssvd") ? true : false);
+		Path tempdir = new Path(getOption("tempDir"));
+		boolean ssvd = parsedArgs.containsKey("--usessvd");
 		
-		run(conf, input, output, numDims, clusters, measure, convergenceDelta, maxIterations, keepCalcFiles, ssvd);
+		run(conf, input, output, numDims, clusters, measure, convergenceDelta, maxIterations, tempdir, ssvd);
 		
 		return 0;
 	}
@@ -119,6 +107,8 @@ public class SpectralKMeansDriver extends AbstractJob {
    * @param measure the DistanceMeasure for the k-Means calculations
    * @param convergenceDelta the double convergence delta for the k-Means calculations
    * @param maxIterations the int maximum number of iterations for the k-Means calculations
+   * @param tempDir Temporary directory for intermediate calculations
+   * @param ssvd Flag to indicate the eigensolver to use
    */
 	public static void run(
 		  Configuration conf,
@@ -129,12 +119,12 @@ public class SpectralKMeansDriver extends AbstractJob {
 		  DistanceMeasure measure,
 		  double convergenceDelta,
 		  int maxIterations,
-		  boolean keepCalcFiles,
+		  Path tempDir,
 		  boolean ssvd)
 				  throws IOException, InterruptedException, ClassNotFoundException {
     
-		Path outputCalc = new Path(output, "calculations");
-		Path outputTmp = new Path(output, "temporary");
+		Path outputCalc = new Path(tempDir, "calculations");
+		Path outputTmp = new Path(tempDir, "temporary");
 
 		// Take in the raw CSV text file and split it ourselves,
 		// creating our own SequenceFiles for the matrices to read later 
@@ -159,7 +149,7 @@ public class SpectralKMeansDriver extends AbstractJob {
 		
 		Path data;
 		
-		if (ssvd) { // Otherwise uses slower Lanczos   
+		if (ssvd) {
 			// SSVD requires an array of Paths to function. So we pass in an array of length one
 			Path [] LPath = new Path[1];
 			LPath[0] = L.getRowPath();
@@ -173,25 +163,25 @@ public class SpectralKMeansDriver extends AbstractJob {
 					1000, // Vertical height of a q-block
 					clusters, 
 					15, // Oversampling 
-					100); // # of reduce tasks
+					10);
 			
 			solveIt.setComputeV(false); 
 			solveIt.setComputeU(true);
 			solveIt.setOverwrite(true);
-			solveIt.setQ(0); // Set the power iterations (0 was fastest most accurate in testing)
-			solveIt.setBroadcast(false); 
-			// setBroadcast should be set to true is running on a distributed system, but on a single
-			// machine it must be set to false. The documentation says that the default is false but 
-			// the default is actually true. 
+			solveIt.setQ(0);
 			
+			// May want to update SSVD documentation on this one: method doc
+			// says "false" is the default, yet it's set to true in the 
+			// variable definition.
+			//solveIt.setBroadcast(false);
 			solveIt.run();
-			data = new Path(solveIt.getUPath()); // Needs "new Path", getUPath method returns a String
+			data = new Path(solveIt.getUPath());
 		} else {
 			// Perform eigen-decomposition using LanczosSolver
 			// since some of the eigen-output is spurious and will be eliminated
 			// upon verification, we have to aim to overshoot and then discard
 			// unnecessary vectors later
-			int overshoot = (int) ((double) clusters * OVERSHOOTMULTIPLIER);
+			int overshoot = Math.min((int) ((double) clusters * OVERSHOOTMULTIPLIER), numDims);
 			DistributedLanczosSolver solver = new DistributedLanczosSolver();
 			LanczosState state = new LanczosState(L, overshoot, solver.getInitialVector(L));
 			Path lanczosSeqFiles = new Path(outputCalc, "eigenvectors");
@@ -240,9 +230,5 @@ public class SpectralKMeansDriver extends AbstractJob {
 		Path answer = new Path(output, "kmeans_out");
 		KMeansDriver.run(conf, data, initialclusters, answer,
 				measure,convergenceDelta, maxIterations, true, 0.0, false);
-		 
-		if(!keepCalcFiles){
-			HadoopUtil.delete(conf, outputCalc);
-		}
     }
 }
