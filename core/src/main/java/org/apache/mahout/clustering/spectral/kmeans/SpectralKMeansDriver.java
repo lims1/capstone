@@ -74,10 +74,10 @@ public class SpectralKMeansDriver extends AbstractJob {
 		addOption(DefaultOptionCreator.maxIterationsOption().create());
 		addOption(DefaultOptionCreator.overwriteOption().create());
 		addFlag("usessvd", "ssvd", "Uses SSVD as the eigensolver. Default is the Lanczos solver.");
-		addOption("ssvdreducers", "r", "Number of reducers for SSVD", String.valueOf(REDUCERS));
-		addOption("ssvdblockheight", "h", "Block height for SSVD", String.valueOf(BLOCKHEIGHT));
-		addOption("ssvdoversampling", "p", "Oversampling parameter for SSVD", String.valueOf(OVERSAMPLING));
-		addOption("ssvdpoweriters", "q", "Additional power iterations for SSVD", String.valueOf(POWERITERS));
+		addOption("reduceTasks", "t", "Number of reducers for SSVD", String.valueOf(REDUCERS));
+		addOption("outerProdBlockHeight", "oh", "Block height of outer products for SSVD", String.valueOf(BLOCKHEIGHT));
+		addOption("oversampling", "p", "Oversampling parameter for SSVD", String.valueOf(OVERSAMPLING));
+		addOption("powerIter", "q", "Additional power iterations for SSVD", String.valueOf(POWERITERS));
 		
 		Map<String, List<String>> parsedArgs = parseArguments(arg0);
 		if (parsedArgs == null) {
@@ -99,10 +99,10 @@ public class SpectralKMeansDriver extends AbstractJob {
 		Path tempdir = new Path(getOption("tempDir"));
 		boolean ssvd = parsedArgs.containsKey("--usessvd");
 		if (ssvd) {
-		    int reducers = Integer.parseInt(getOption("ssvdreducers"));
-		    int blockheight = Integer.parseInt(getOption("ssvdblockheight"));
-		    int oversampling = Integer.parseInt(getOption("ssvdoversampling"));
-		    int poweriters = Integer.parseInt(getOption("ssvdpoweriters"));
+		    int reducers = Integer.parseInt(getOption("reduceTasks"));
+		    int blockheight = Integer.parseInt(getOption("outerProdBlockHeight"));
+		    int oversampling = Integer.parseInt(getOption("oversampling"));
+		    int poweriters = Integer.parseInt(getOption("powerIter"));
 		    run(conf, input, output, numDims, clusters, measure, convergenceDelta,
 		            maxIterations, tempdir, true, reducers, blockheight, oversampling, poweriters);
 		} else {
