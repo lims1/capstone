@@ -54,6 +54,7 @@ public class SpectralKMeansDriver extends AbstractJob {
 	public static final int REDUCERS = 10;
 	public static final int BLOCKHEIGHT = 30000;
 	public static final int OVERSAMPLING = 15;
+	public static final int POWERITERS = 0;
 
 	public static void main(String[] args) throws Exception {
 		ToolRunner.run(new SpectralKMeansDriver(), args);
@@ -76,6 +77,7 @@ public class SpectralKMeansDriver extends AbstractJob {
 		addOption("ssvdreducers", "r", "Number of reducers for SSVD", String.valueOf(REDUCERS));
 		addOption("ssvdblockheight", "h", "Block height for SSVD", String.valueOf(BLOCKHEIGHT));
 		addOption("ssvdoversampling", "p", "Oversampling parameter for SSVD", String.valueOf(OVERSAMPLING));
+		addOption("ssvdpoweriters", "q", "Additional power iterations for SSVD", String.valueOf(POWERITERS));
 		
 		Map<String, List<String>> parsedArgs = parseArguments(arg0);
 		if (parsedArgs == null) {
@@ -99,9 +101,10 @@ public class SpectralKMeansDriver extends AbstractJob {
 		if (ssvd) {
 		    int reducers = Integer.parseInt(getOption("ssvdreducers"));
 		    int blockheight = Integer.parseInt(getOption("ssvdblockheight"));
-		    int oversampling = Integer.parseInt(getOption("oversampling"));
+		    int oversampling = Integer.parseInt(getOption("ssvdoversampling"));
+		    int poweriters = Integer.parseInt(getOption("ssvdpoweriters"));
 		    run(conf, input, output, numDims, clusters, measure, convergenceDelta,
-		            maxIterations, tempdir, true, reducers, blockheight, oversampling);
+		            maxIterations, tempdir, true, reducers, blockheight, oversampling, poweriters);
 		} else {
 		    run(conf, input, output, numDims, clusters, measure, convergenceDelta,
 		            maxIterations, tempdir, false);
@@ -122,7 +125,7 @@ public class SpectralKMeansDriver extends AbstractJob {
 	        Path tempDir,
 	        boolean ssvd) throws IOException, InterruptedException, ClassNotFoundException {
 	    run(conf, input, output, numDims, clusters, measure, convergenceDelta,
-	            maxIterations, tempDir, ssvd, REDUCERS, BLOCKHEIGHT, OVERSAMPLING);
+	            maxIterations, tempDir, ssvd, REDUCERS, BLOCKHEIGHT, OVERSAMPLING, POWERITERS);
 	}
 
   /**
@@ -138,6 +141,10 @@ public class SpectralKMeansDriver extends AbstractJob {
    * @param maxIterations the int maximum number of iterations for the k-Means calculations
    * @param tempDir Temporary directory for intermediate calculations
    * @param ssvd Flag to indicate the eigensolver to use
+   * @param numReducers
+   * @param blockHeight
+   * @param oversampling
+   * @param poweriters
    */
 	public static void run(
 		  Configuration conf,
@@ -152,7 +159,8 @@ public class SpectralKMeansDriver extends AbstractJob {
 		  boolean ssvd,
 		  int numReducers,
 		  int blockHeight,
-		  int oversampling)
+		  int oversampling,
+		  int poweriters)
 				  throws IOException, InterruptedException, ClassNotFoundException {
     
 		Path outputCalc = new Path(tempDir, "calculations");
@@ -200,7 +208,7 @@ public class SpectralKMeansDriver extends AbstractJob {
 			solveIt.setComputeV(false); 
 			solveIt.setComputeU(true);
 			solveIt.setOverwrite(true);
-			solveIt.setQ(0);
+			solveIt.setQ(poweriters);
 			//solveIt.setBroadcast(false);
 			solveIt.run();
 			data = new Path(solveIt.getUPath());
