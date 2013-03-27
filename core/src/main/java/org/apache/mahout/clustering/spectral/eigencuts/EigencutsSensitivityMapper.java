@@ -71,39 +71,17 @@ public class EigencutsSensitivityMapper extends
     
     // go through the vector, performing the calculations
     // sadly, no way to get around n^2 computations      
-    Map<Integer, EigencutsSensitivityNode> columns = Maps.newHashMap();
+    // for simplicity purposes non-maximal suppression also not included for now
     Vector ev = vw.get();
     for (int i = 0; i < ev.size(); i++) {
-      double minsij = Double.MAX_VALUE;
-      int minInd = -1;
       for (int j = 0; j < ev.size(); j++) {          
         double sij = performSensitivityCalculation(eigenvalue, ev.get(i),
             ev.get(j), diagonal.get(i), diagonal.get(j));
-        
-        // perform non-maximal suppression
-        // is this the smallest value in the row?
-        if (sij < minsij) {
-          minsij = sij;
-          minInd = j;
-        }
-      }
-      
-      // is this the smallest value in the column?
-      Integer column = minInd;
-      EigencutsSensitivityNode value = new EigencutsSensitivityNode(i, minInd, minsij);
-      if (!columns.containsKey(column)) {
-        columns.put(column, value);
-      } else if (columns.get(column).getSensitivity() > minsij) {
-        columns.remove(column);
-        columns.put(column, value);
+        	EigencutsSensitivityNode e = new EigencutsSensitivityNode(i, j, sij);
+        	context.write(new IntWritable(e.getRow()), e);
       }
     }
     
-    // write whatever values made it through
-    
-    for (EigencutsSensitivityNode e : columns.values()) {
-      context.write(new IntWritable(e.getRow()), e);
-    }
   }
   
   /**
