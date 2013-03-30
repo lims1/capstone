@@ -17,7 +17,10 @@
 
 package org.apache.mahout.clustering.spectral.eigencuts;
 
-import com.google.common.collect.Lists;
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.util.ToolRunner;
@@ -28,7 +31,6 @@ import org.apache.mahout.clustering.spectral.common.VectorMatrixMultiplicationJo
 import org.apache.mahout.common.AbstractJob;
 import org.apache.mahout.common.HadoopUtil;
 import org.apache.mahout.common.commandline.DefaultOptionCreator;
-import org.apache.mahout.math.DenseVector;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.decomposer.lanczos.LanczosState;
 import org.apache.mahout.math.hadoop.DistributedRowMatrix;
@@ -37,18 +39,17 @@ import org.apache.mahout.math.hadoop.decomposer.EigenVerificationJob;
 import org.apache.mahout.math.hadoop.stochasticsvd.SSVDSolver;
 import org.apache.mahout.math.stats.OnlineSummarizer;
 
-import java.io.IOException;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
-
 public class EigencutsDriver extends AbstractJob {
 
-  public static final double EPSILON_DEFAULT = 0.25;
-
-  public static final double TAU_DEFAULT = -0.1;
-
-  public static final double OVERSHOOT_MULTIPLIER = 1.5;
+	public static final double EPSILON_DEFAULT = 0.25;
+  	public static final double TAU_DEFAULT = -0.1;
+  	public static final double OVERSHOOT_MULTIPLIER = 1.5;
+	public static final int REDUCERS = 10;
+	public static final int BLOCKHEIGHT = 30000;
+	public static final int OVERSAMPLING = 15;
+	public static final int POWERITERS = 0;
+	public static final int CUTSITERS = 1;
+  
 
   public static void main(String[] args) throws Exception {
     ToolRunner.run(new EigencutsDriver(), args);
@@ -66,9 +67,13 @@ public class EigencutsDriver extends AbstractJob {
     addOption("epsilon", "e", "Half-life threshold coefficient", Double.toString(EPSILON_DEFAULT));
     addOption("tau", "t", "Threshold for cutting affinities", Double.toString(TAU_DEFAULT));
     addOption("eigenrank", "k", "Number of top eigenvectors to use", true);
-    addOption(DefaultOptionCreator.inputOption().create());
-    addOption(DefaultOptionCreator.outputOption().create());
     addOption(DefaultOptionCreator.overwriteOption().create());
+	addOption("reduceTasks", "t", "Number of reducers for SSVD", String.valueOf(REDUCERS));
+	addOption("outerProdBlockHeight", "oh", "Block height of outer products for SSVD", String.valueOf(BLOCKHEIGHT));
+	addOption("oversampling", "p", "Oversampling parameter for SSVD", String.valueOf(OVERSAMPLING));
+	addOption("powerIter", "q", "Additional power iterations for SSVD", String.valueOf(POWERITERS));
+	addOption("cutsIter", "c", "Constraint that only iterates x number of times (defaults to 1), maximum", String.valueOf(CUTSITERS));
+	
     Map<String, List<String>> parsedArgs = parseArguments(arg0);
     if (parsedArgs == null) {
       return 0;
@@ -80,13 +85,20 @@ public class EigencutsDriver extends AbstractJob {
     if (hasOption(DefaultOptionCreator.OVERWRITE_OPTION)) {
       HadoopUtil.delete(getConf(), output);
     }
+    
     int numDims = Integer.parseInt(getOption("dimensions"));
     double halflife = Double.parseDouble(getOption("half-life"));
     double epsilon = Double.parseDouble(getOption("epsilon"));
     double tau = Double.parseDouble(getOption("tau"));
     int eigenrank = Integer.parseInt(getOption("eigenrank"));
+    int reducers = Integer.parseInt(getOption("reduceTasks"));
+    int blockheight = Integer.parseInt(getOption("outerProdBlockHeight"));
+    int oversampling = Integer.parseInt(getOption("oversampling"));
+    int poweriters = Integer.parseInt(getOption("powerIter"));
+    int cutiters = Integer.parseInt(getOption("cutIter"));
+    boolean fixedIter = hasOption("cutsIter");
 
-    run(conf, input, output, numDims, eigenrank, halflife, epsilon, tau);
+    run(conf, input, output, numDims, eigenrank, halflife, epsilon, tau, reducers, blockheight, oversampling, poweriters, cutiters, fixedIter);
 
     return 0;
   }
@@ -110,7 +122,13 @@ public class EigencutsDriver extends AbstractJob {
                          int eigenrank,
                          double halflife,
                          double epsilon,
-                         double tau)
+                         double tau,	
+                         int numReducers,
+               		  	 int blockHeight,
+               		  	 int oversampling,
+            		  	 int poweriters,
+            		  	 int cutiters,
+            		  	 boolean fixedIter)
     throws IOException, InterruptedException, ClassNotFoundException {
     // set the instance variables
     // create a few new Paths for temp files and transformations
@@ -134,10 +152,13 @@ public class EigencutsDriver extends AbstractJob {
 	Vector D = MatrixDiagonalizeJob.runJob(affSeqFiles, numDims);
 
     long numCuts;
+    int iterations = 0;
     Path data;
-    do {
+
+	do { iterations++;
+	
       // first three steps are the same as spectral k-means:
-      // 1) calculate D from A
+      // 1) calculate D from A (done above)
       // 2) calculate L = D^-0.5 * A * D^-0.5
       // 3) calculate eigenvectors of L
 
@@ -156,16 +177,19 @@ public class EigencutsDriver extends AbstractJob {
 				depConf, 
 				LPath, 
 				SSVDout, 
-				1000, // Vertical height of a q-block
+				blockHeight, // Vertical height of a q-block
 				eigenrank, 
-				15, // Oversampling 
-				100); // # of reduce tasks
+				oversampling, // Oversampling 
+				numReducers); // # of reduce tasks
 		
 		solveIt.setComputeV(false); 
 		solveIt.setComputeU(true);
 		solveIt.setOverwrite(true);
-		solveIt.setQ(0); // Set the power iterations (0 was fastest most accurate in testing)
+		solveIt.setQ(poweriters);
+	   
+	// TODO: MAHOUT-517: Comment out 'solveIt.setBroadcast(false)' line below when committing final for multiple nodes
 		solveIt.setBroadcast(false); 
+		
 		// setBroadcast should be set to true is running on a distributed system, but on a single
 		// machine it must be set to false. The documentation says that the default is false but 
 		// the default is actually true. 
@@ -205,7 +229,7 @@ public class EigencutsDriver extends AbstractJob {
                                      new Path(outputTmp, Long.toString(System.nanoTime())), numDims, numDims);
         A.setConf(new Configuration());
       }
-    } while (numCuts > 0);
+    } while (fixedIter ? (numCuts>0 && iterations<cutiters) : numCuts>0);
 
     // TODO: MAHOUT-517: Eigencuts needs an output format
   }
@@ -221,7 +245,8 @@ public class EigencutsDriver extends AbstractJob {
                                                                int numEigenVectors,
                                                                int overshoot,
                                                                Path tmp) throws IOException {
-    DistributedLanczosSolver solver = new DistributedLanczosSolver();
+    
+	DistributedLanczosSolver solver = new DistributedLanczosSolver();
     Path seqFiles = new Path(tmp, "eigendecomp-" + (System.nanoTime() & 0xFF));
     solver.runJob(conf,
                   state,
