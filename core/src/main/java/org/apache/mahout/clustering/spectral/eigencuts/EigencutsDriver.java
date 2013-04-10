@@ -95,10 +95,11 @@ public class EigencutsDriver extends AbstractJob {
     int blockheight = Integer.parseInt(getOption("outerProdBlockHeight"));
     int oversampling = Integer.parseInt(getOption("oversampling"));
     int poweriters = Integer.parseInt(getOption("powerIter"));
-    int cutiters = Integer.parseInt(getOption("cutIter"));
-    boolean fixedIter = hasOption("cutsIter");
+    int cutsiters = Integer.parseInt(getOption("cutsIter"));
+    
 
-    run(conf, input, output, numDims, eigenrank, halflife, epsilon, tau, reducers, blockheight, oversampling, poweriters, cutiters, fixedIter);
+
+    run(conf, input, output, numDims, eigenrank, halflife, epsilon, tau, reducers, blockheight, oversampling, poweriters, cutsiters);
 
     return 0;
   }
@@ -127,8 +128,8 @@ public class EigencutsDriver extends AbstractJob {
                		  	 int blockHeight,
                		  	 int oversampling,
             		  	 int poweriters,
-            		  	 int cutiters,
-            		  	 boolean fixedIter)
+            		  	 int cutiters
+            		  	 )
     throws IOException, InterruptedException, ClassNotFoundException {
     // set the instance variables
     // create a few new Paths for temp files and transformations
@@ -166,7 +167,9 @@ public class EigencutsDriver extends AbstractJob {
 		DistributedRowMatrix L = VectorMatrixMultiplicationJob.runJob(affSeqFiles, D,
 				new Path(outputCalc, "laplacian"), new Path(outputCalc, outputCalc));
 		L.setConf(depConf);
-
+		System.out.println("Normalized Lampacian matrix rows:" + L.numRows());
+		System.out.println("Normalized Lampacian matrix columns:" + L.numRows());
+		
 		//(step 3) SSVD requires an array of Paths to function. So we pass in an array of length one
 		Path [] LPath = new Path[1];
 		LPath[0] = L.getRowPath();
@@ -204,24 +207,33 @@ public class EigencutsDriver extends AbstractJob {
 		UnitVectorizerJob.runJob(data, unitVectors);
 				
 		DistributedRowMatrix Wt = new DistributedRowMatrix(
-						unitVectors, new Path(unitVectors, "tmp"), eigenrank, numDims);
+						unitVectors, new Path(unitVectors, "tmp"), numDims, numDims);
 		Wt.setConf(depConf);
-		data = Wt.getRowPath();
 
+	    System.out.println("Wt rows:" + Wt.numRows());
+	    System.out.println("Wt columns:" + Wt.numCols());
+		
       Vector evs = solveIt.getSingularValues();
+      
+      System.out.println("Singular Values:" + evs);
 
       // here's where things get interesting: steps 4, 5, and 6 are unique
       // to this algorithm, and depending on the final output, steps 1-3
       // may be repeated as well
+      	System.out.println("Again...");
+	    System.out.println("Wt rows:" + Wt.numRows());
+	    System.out.println("Wt columns:" + Wt.numCols());
+	    DistributedRowMatrix WtTranspose = Wt.transpose();
 
       // calculate sensitivities (step 4 and step 5)
+	
       Path sensitivities = new Path(outputCalc, "sensitivities-" + (System.nanoTime() & 0xFF));
-      EigencutsSensitivityJob.runJob(evs, D, Wt.getRowPath(), halflife, tau, median(D), epsilon, sensitivities);
+      EigencutsSensitivityJob.runJob(evs, D, WtTranspose.getRowPath(), halflife, tau, median(D), epsilon, sensitivities);
 
       // perform the cuts (step 6)
       input = new Path(outputTmp, "nextAff-" + (System.nanoTime() & 0xFF));
       numCuts = EigencutsAffinityCutsJob.runjob(A.getRowPath(), sensitivities, input, conf);
-
+      System.out.println("Number of cuts:" + numCuts);
       // how many cuts were made?
       if (numCuts > 0) {
         // recalculate A
@@ -229,7 +241,7 @@ public class EigencutsDriver extends AbstractJob {
                                      new Path(outputTmp, Long.toString(System.nanoTime())), numDims, numDims);
         A.setConf(new Configuration());
       }
-    } while (fixedIter ? (numCuts>0 && iterations<cutiters) : numCuts>0);
+    } while (numCuts>0 && iterations<cutiters);
 
     // TODO: MAHOUT-517: Eigencuts needs an output format
   }

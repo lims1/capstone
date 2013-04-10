@@ -24,6 +24,7 @@ import com.google.common.collect.Maps;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.mapreduce.Mapper;
+import org.apache.mahout.clustering.spectral.common.EigencutsVectorCache;
 import org.apache.mahout.clustering.spectral.common.VectorCache;
 import org.apache.mahout.math.DenseVector;
 import org.apache.mahout.math.SequentialAccessSparseVector;
@@ -44,11 +45,14 @@ public class EigencutsSensitivityMapper extends
     super.setup(context);
     Configuration config = context.getConfiguration();
     beta0 = Double.parseDouble(config.get(EigencutsKeys.BETA));
+    System.out.println("Loaded beta from mapper:" + Double.toString(beta0));
     epsilon = Double.parseDouble(config.get(EigencutsKeys.EPSILON));
-    
+    System.out.println("Loaded epsilon from mapper:" + Double.toString(epsilon));
     // read in the two vectors from the cache
-    eigenvalues = VectorCache.load(config);
-    diagonal = VectorCache.load(config);
+    eigenvalues = EigencutsVectorCache.load(EigencutsKeys.EIGENVALUES_CACHE_INDEX, config);
+    System.out.println("Loaded eigenvalues:" + eigenvalues);
+    diagonal = EigencutsVectorCache.load(EigencutsKeys.DIAGONAL_CACHE_INDEX, config);
+    System.out.println("Loaded diagonal:" + diagonal);
     if (!(eigenvalues instanceof SequentialAccessSparseVector || eigenvalues instanceof DenseVector)) {
       eigenvalues = new SequentialAccessSparseVector(eigenvalues);
     }
@@ -60,12 +64,23 @@ public class EigencutsSensitivityMapper extends
   @Override
   protected void map(IntWritable row, VectorWritable vw, Context context) 
     throws IOException, InterruptedException {
+   
+	System.out.println("RowNumber:" + row);
+    System.out.println("Vector:" + vw);
     
     // first, does this particular eigenvector even pass the required threshold?
     double eigenvalue = Math.abs(eigenvalues.get(row.get()));
     double betak = -Functions.LOGARITHM.apply(2) / Functions.LOGARITHM.apply(eigenvalue);
     if (eigenvalue >= 1.0 || betak <= epsilon * beta0) {
       // doesn't pass the threshold! quit
+    	System.out.println("This eigenvector doesn't pass the required threshold!");
+    	System.out.println("Eigenvalue: " +  eigenvalue);
+    	System.out.println("betak: " +  betak);
+    	System.out.println("epsilon*beta0 = " + epsilon + " * " + beta0 + " =" + epsilon*beta0);
+    	if(betak <= epsilon * beta0)
+    		System.out.println("betak <= epsilon * beta0 is true");
+    	if (eigenvalue >= 1.0)
+    		System.out.println("eigenvalue >= 1.0 is true.");
       return;
     }
     
@@ -77,7 +92,10 @@ public class EigencutsSensitivityMapper extends
       for (int j = 0; j < ev.size(); j++) {          
         double sij = performSensitivityCalculation(eigenvalue, ev.get(i),
             ev.get(j), diagonal.get(i), diagonal.get(j));
-        	EigencutsSensitivityNode e = new EigencutsSensitivityNode(i, j, sij);
+        	EigencutsSensitivityNode e = new EigencutsSensitivityNode(row.get(), j, sij);
+        	System.out.println("Row being written out:" + e.getRow());
+        	System.out.println("Node being written out: \n" + e);
+        	System.out.println("-----------------------------------------------------");
         	context.write(new IntWritable(e.getRow()), e);
       }
     }
@@ -96,6 +114,11 @@ public class EigencutsSensitivityMapper extends
                                                double evj,
                                                double diagi,
                                                double diagj) {
+    System.out.println("Eigenvalue in Sensitivity Calculation:" + eigenvalue);
+    System.out.println("Evi in Sensitivity Calculation:" + evi);
+    System.out.println("Evj in Sensitivity Calculation:" + evj);
+    System.out.println("Diagi in Sensitivity Calculation:" + diagi);
+    System.out.println("Diagj in Sensitivity Calculation:" + diagj);
     
     double firsthalf = Functions.LOGARITHM.apply(2)
         / (eigenvalue * Functions.LOGARITHM.apply(eigenvalue)
@@ -104,6 +127,8 @@ public class EigencutsSensitivityMapper extends
     double secondhalf =
         -Functions.POW.apply(evi / Functions.SQRT.apply(diagi) - evj / Functions.SQRT.apply(diagj), 2)
         + (1.0 - eigenvalue) * (Functions.POW.apply(evi, 2) / diagi + Functions.POW.apply(evj, 2) / diagj);
+    
+    System.out.println(firsthalf + "  x " + secondhalf + " = " + (firsthalf*secondhalf));
     
     return firsthalf * secondhalf;
   }

@@ -27,6 +27,7 @@ import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.input.SequenceFileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.mapreduce.lib.output.SequenceFileOutputFormat;
+import org.apache.mahout.clustering.spectral.common.EigencutsVectorCache;
 import org.apache.mahout.clustering.spectral.common.VectorCache;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.VectorWritable;
@@ -95,16 +96,23 @@ public final class EigencutsSensitivityJob {
     Path eigenOutputPath = new Path(output.getParent(), "eigenvalues");
     Path diagOutputPath = new Path(output.getParent(), "diagonal");
     jobConfig.set(EigencutsKeys.VECTOR_CACHE_BASE, output.getParent().getName());
-    VectorCache.save(new IntWritable(EigencutsKeys.EIGENVALUES_CACHE_INDEX), 
-        eigenvalues, eigenOutputPath, jobConfig);
-    VectorCache.save(new IntWritable(EigencutsKeys.DIAGONAL_CACHE_INDEX), 
+    EigencutsVectorCache.save(new IntWritable(EigencutsKeys.EIGENVALUES_CACHE_INDEX), 
+        eigenvalues, eigenOutputPath, new IntWritable(EigencutsKeys.DIAGONAL_CACHE_INDEX), 
         diagonal, diagOutputPath, jobConfig);
+    System.out.println("Saved eigenvalues:" + eigenvalues);
+    
+    System.out.println("Saved diagonal:" + diagonal);
+    
     
     // set up the rest of the job
     jobConfig.set(EigencutsKeys.BETA, Double.toString(beta));
+    System.out.println("Set beta:" + Double.toString(beta));
     jobConfig.set(EigencutsKeys.EPSILON, Double.toString(epsilon));
+    System.out.println("Set epsilon:" +Double.toString(epsilon));
     jobConfig.set(EigencutsKeys.DELTA, Double.toString(delta));
+    System.out.println("Set delta:" +Double.toString(delta));
     jobConfig.set(EigencutsKeys.TAU, Double.toString(tau));
+    System.out.println("Set tau:" +Double.toString(tau));
     
     Job job = new Job(jobConfig, "EigencutsSensitivityJob");
     job.setInputFormatClass(SequenceFileInputFormat.class);

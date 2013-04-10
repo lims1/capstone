@@ -41,6 +41,12 @@ public class EigencutsSensitivityNode implements Writable {
     sensitivity = s;
   }
 
+  public EigencutsSensitivityNode()
+  {
+	   row = 0;
+	   column = 0;
+	   sensitivity = 0;
+  }
   @Override
   public void readFields(DataInput in) throws IOException {
     this.row = in.readInt();
@@ -65,5 +71,10 @@ public class EigencutsSensitivityNode implements Writable {
 
   public double getSensitivity() {
     return sensitivity;
+  }
+  
+  public String toString()
+  {
+	  return ("Row: " + row + "\n" + "Column: " + column + "\n" + "Sensitivity: " + sensitivity + "\n");
   }
 }
