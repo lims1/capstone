@@ -170,9 +170,11 @@ public class EigencutsDriver extends AbstractJob {
 		System.out.println("Normalized Lampacian matrix rows:" + L.numRows());
 		System.out.println("Normalized Lampacian matrix columns:" + L.numRows());
 		
+		DistributedRowMatrix Lt = L.transpose();
+		
 		//(step 3) SSVD requires an array of Paths to function. So we pass in an array of length one
 		Path [] LPath = new Path[1];
-		LPath[0] = L.getRowPath();
+		LPath[0] = Lt.getRowPath();
 		
 		Path SSVDout = new Path(outputCalc, "SSVD");
 		
@@ -199,21 +201,26 @@ public class EigencutsDriver extends AbstractJob {
 		
 		solveIt.run();
 		data = new Path(solveIt.getUPath()); // Needs "new Path", getUPath method returns a String
-
+	
 		// Normalize the rows of Wt to unit length
 		// normalize is important because it reduces the occurrence of two unique clusters  combining into one 
+		
+		DistributedRowMatrix W = new DistributedRowMatrix(
+				data, new Path(outputCalc, "tmp"), numDims, eigenrank);
+		
+		W.setConf(depConf);
+		
+		DistributedRowMatrix Wt = W.transpose();
+	
+		
 		Path unitVectors = new Path(outputCalc, "unitvectors");
-				
-		UnitVectorizerJob.runJob(data, unitVectors);
-				
-		DistributedRowMatrix Wt = new DistributedRowMatrix(
-						unitVectors, new Path(unitVectors, "tmp"), numDims, numDims);
-		Wt.setConf(depConf);
-
-	    System.out.println("Wt rows:" + Wt.numRows());
-	    System.out.println("Wt columns:" + Wt.numCols());
+						
+		UnitVectorizerJob.runJob(Wt.getRowPath(), unitVectors);
+		
+	
 		
       Vector evs = solveIt.getSingularValues();
+   
       
       System.out.println("Singular Values:" + evs);
 
@@ -221,14 +228,14 @@ public class EigencutsDriver extends AbstractJob {
       // to this algorithm, and depending on the final output, steps 1-3
       // may be repeated as well
       	System.out.println("Again...");
-	    System.out.println("Wt rows:" + Wt.numRows());
-	    System.out.println("Wt columns:" + Wt.numCols());
-	    DistributedRowMatrix WtTranspose = Wt.transpose();
+	    System.out.println("Wt rows:" + Wt.numRows() + "This value doesn't effect mapping vector length. Only a descriptor variable.");
+	    System.out.println("Wt columns:" + Wt.numCols() + "This value doesn't effect mapping vector length. Only a descriptor variable.");
+	   
 
       // calculate sensitivities (step 4 and step 5)
 	
       Path sensitivities = new Path(outputCalc, "sensitivities-" + (System.nanoTime() & 0xFF));
-      EigencutsSensitivityJob.runJob(evs, D, WtTranspose.getRowPath(), halflife, tau, median(D), epsilon, sensitivities);
+      EigencutsSensitivityJob.runJob(evs, D, Wt.getRowPath(), halflife, tau, median(D), epsilon, sensitivities);
 
       // perform the cuts (step 6)
       input = new Path(outputTmp, "nextAff-" + (System.nanoTime() & 0xFF));
