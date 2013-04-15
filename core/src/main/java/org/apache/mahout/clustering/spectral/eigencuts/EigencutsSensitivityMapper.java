@@ -18,14 +18,11 @@
 package org.apache.mahout.clustering.spectral.eigencuts;
 
 import java.io.IOException;
-import java.util.Map;
 
-import com.google.common.collect.Maps;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.mahout.clustering.spectral.common.EigencutsVectorCache;
-import org.apache.mahout.clustering.spectral.common.VectorCache;
 import org.apache.mahout.math.DenseVector;
 import org.apache.mahout.math.SequentialAccessSparseVector;
 import org.apache.mahout.math.Vector;

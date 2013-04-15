@@ -28,7 +28,6 @@ import org.apache.hadoop.mapreduce.lib.input.SequenceFileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.mapreduce.lib.output.SequenceFileOutputFormat;
 import org.apache.mahout.clustering.spectral.common.EigencutsVectorCache;
-import org.apache.mahout.clustering.spectral.common.VectorCache;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.VectorWritable;
 
@@ -115,6 +114,7 @@ public final class EigencutsSensitivityJob {
     System.out.println("Set tau:" +Double.toString(tau));
     
     Job job = new Job(jobConfig, "EigencutsSensitivityJob");
+    job.setJarByClass(EigencutsSensitivityJob.class);
     job.setInputFormatClass(SequenceFileInputFormat.class);
     job.setMapOutputKeyClass(IntWritable.class);
     job.setMapOutputValueClass(EigencutsSensitivityNode.class);

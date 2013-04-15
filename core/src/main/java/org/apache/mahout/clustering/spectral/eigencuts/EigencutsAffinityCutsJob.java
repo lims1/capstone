@@ -66,6 +66,7 @@ public final class EigencutsAffinityCutsJob {
     conf.set(EigencutsKeys.CUTMATRIX_PATH, cutMatrix.getName());
     
     Job job = new Job(conf, "EigencutsAffinityCutsJob");
+    job.setJarByClass(EigencutsAffinityCutsJob.class);
     job.setInputFormatClass(SequenceFileInputFormat.class);
     job.setOutputFormatClass(SequenceFileOutputFormat.class);
     job.setMapOutputKeyClass(Text.class);
