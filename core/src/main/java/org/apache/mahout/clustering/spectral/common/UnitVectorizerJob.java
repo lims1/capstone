@@ -75,6 +75,9 @@ public final class UnitVectorizerJob {
     @Override
     protected void map(IntWritable row, VectorWritable vector, Context context) 
       throws IOException, InterruptedException {
+    	
+    	System.out.println("Row:" + row);
+    	System.out.println(vector);
       
       // set up the return value and perform the computations
       double norm = vectorNorm(vector.get());

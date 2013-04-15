@@ -145,12 +145,15 @@ public class EigencutsDriver extends AbstractJob {
 	// Construct the affinity matrix using the newly-created sequence files
 	DistributedRowMatrix A = 
 			new DistributedRowMatrix(affSeqFiles, new Path(outputTmp, "afftmp"), numDims, numDims); 
-	
 	Configuration depConf = new Configuration(conf);
+
+	
+	
 	A.setConf(depConf);
 
 	// Construct the diagonal matrix D (represented as a vector)
 	Vector D = MatrixDiagonalizeJob.runJob(affSeqFiles, numDims);
+	System.out.println("Diagonal:" + D);
 
     long numCuts;
     int iterations = 0;
@@ -165,17 +168,15 @@ public class EigencutsDriver extends AbstractJob {
 
     	//Calculate the normalized Laplacian of the form: L = D^(-0.5)AD^(-0.5)
 		DistributedRowMatrix L = VectorMatrixMultiplicationJob.runJob(affSeqFiles, D,
-				new Path(outputCalc, "laplacian"), new Path(outputCalc, outputCalc));
+				new Path(outputCalc, "laplacian"));
 		L.setConf(depConf);
 		System.out.println("Normalized Lampacian matrix rows:" + L.numRows());
 		System.out.println("Normalized Lampacian matrix columns:" + L.numRows());
-		
-		DistributedRowMatrix Lt = L.transpose();
-		
+	
 		//(step 3) SSVD requires an array of Paths to function. So we pass in an array of length one
 		Path [] LPath = new Path[1];
-		LPath[0] = Lt.getRowPath();
-		
+		LPath[0] = L.getRowPath();
+	
 		Path SSVDout = new Path(outputCalc, "SSVD");
 		
 		SSVDSolver solveIt = new SSVDSolver(
@@ -189,9 +190,10 @@ public class EigencutsDriver extends AbstractJob {
 		
 		solveIt.setComputeV(false); 
 		solveIt.setComputeU(true);
+		solveIt.setcUHalfSigma(true);
 		solveIt.setOverwrite(true);
 		solveIt.setQ(poweriters);
-	   
+		
 	// TODO: MAHOUT-517: Comment out 'solveIt.setBroadcast(false)' line below when committing final for multiple nodes
 		solveIt.setBroadcast(false); 
 		
@@ -201,7 +203,7 @@ public class EigencutsDriver extends AbstractJob {
 		
 		solveIt.run();
 		data = new Path(solveIt.getUPath()); // Needs "new Path", getUPath method returns a String
-	
+		
 		// Normalize the rows of Wt to unit length
 		// normalize is important because it reduces the occurrence of two unique clusters  combining into one 
 		
@@ -211,18 +213,16 @@ public class EigencutsDriver extends AbstractJob {
 		W.setConf(depConf);
 		
 		DistributedRowMatrix Wt = W.transpose();
-	
 		
 		Path unitVectors = new Path(outputCalc, "unitvectors");
 						
 		UnitVectorizerJob.runJob(Wt.getRowPath(), unitVectors);
 		
-	
 		
-      Vector evs = solveIt.getSingularValues();
-   
-      
-      System.out.println("Singular Values:" + evs);
+		
+		Vector evs = solveIt.getSingularValues();
+	
+		System.out.println("Singular Values:" + evs);
 
       // here's where things get interesting: steps 4, 5, and 6 are unique
       // to this algorithm, and depending on the final output, steps 1-3

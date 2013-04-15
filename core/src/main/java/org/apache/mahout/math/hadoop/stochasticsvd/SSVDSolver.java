@@ -124,7 +124,7 @@ public class SSVDSolver {
    * @param outputPath
    *          Output path containing U, V and singular values vector files.
    * @param ablockRows
-   *          The vertical hight of a q-block (bigger value require more memory
+   *          The vertical height of a q-block (bigger value require more memory
    *          in mappers+ perhaps larger {@code minSplitSize} values
    * @param k
    *          desired rank
@@ -206,7 +206,7 @@ public class SSVDSolver {
   /**
    * This contains k+p singular values resulted from the solver run.
    * 
-   * @return singlular values (largest to smallest)
+   * @return singular values (largest to smallest)
    */
   public Vector getSingularValues() {
     return svalues;
@@ -301,7 +301,7 @@ public class SSVDSolver {
    * can avoid most of that overhead due to increased input density.
    * <P>
    * 
-   * The vector size for this offest is n (width of A input). In PCA and R this
+   * The vector size for this offset is n (width of A input). In PCA and R this
    * is known as "column means", but in this case it can be any offset of row
    * vectors of course to propagate into SSVD solution.
    * <P>
@@ -349,7 +349,7 @@ public class SSVDSolver {
 
       if (pcaMeanPath != null) {
         /*
-         * combute s_b0 if pca offset present.
+         * compute s_b0 if pca offset present.
          * 
          * Just in case, we treat xi path as a possible reduce or otherwise
          * multiple task output that we assume we need to sum up partial
@@ -492,7 +492,7 @@ public class SSVDSolver {
       EigenSolverWrapper eigenWrapper = new EigenSolverWrapper(SSVDHelper.extractRawData(bbtSquare));
       Matrix uHat = new DenseMatrix(eigenWrapper.getUHat());
       svalues = new DenseVector(eigenWrapper.getEigenValues());
-
+      
       svalues.assign(Functions.SQRT);
 
       // save/redistribute UHat

@@ -41,7 +41,7 @@ import org.apache.mahout.math.hadoop.DistributedRowMatrix;
  * and the Markov transition matrix inherent in the Eigencuts algorithm.
  * The equation takes the form:</p>
  *
- * {@code W = D^(1/2) * M * D^(1/2)}
+ * {@code W = D^(-1/2) * M * D^(-1/2)}
  *
  * <p>Since the diagonal matrix D has only n non-zero elements, it is represented
  * as a dense vector in this job, rather than a full n-by-n matrix. This job
@@ -124,7 +124,7 @@ public final class VectorMatrixMultiplicationJob {
         double dii = Functions.SQRT.apply(diagonal.get(key.get()));
         double djj = Functions.SQRT.apply(diagonal.get(e.index()));
         double mij = e.get();
-        e.set(dii * mij * djj);
+        e.set((1/dii) * mij * (1/djj));
       }
       ctx.write(key, row);
     }
