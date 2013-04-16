@@ -170,8 +170,6 @@ public class EigencutsDriver extends AbstractJob {
 		DistributedRowMatrix L = VectorMatrixMultiplicationJob.runJob(affSeqFiles, D,
 				new Path(outputCalc, "laplacian"));
 		L.setConf(depConf);
-		System.out.println("Normalized Lampacian matrix rows:" + L.numRows());
-		System.out.println("Normalized Lampacian matrix columns:" + L.numRows());
 	
 		//(step 3) SSVD requires an array of Paths to function. So we pass in an array of length one
 		Path [] LPath = new Path[1];
