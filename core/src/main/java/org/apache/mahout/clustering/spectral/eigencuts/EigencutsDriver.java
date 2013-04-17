@@ -216,8 +216,6 @@ public class EigencutsDriver extends AbstractJob {
 						
 		UnitVectorizerJob.runJob(Wt.getRowPath(), unitVectors);
 		
-		
-		
 		Vector evs = solveIt.getSingularValues();
 	
 		System.out.println("Singular Values:" + evs);
@@ -233,8 +231,21 @@ public class EigencutsDriver extends AbstractJob {
       // calculate sensitivities (step 4 and step 5)
 	
       Path sensitivities = new Path(outputCalc, "sensitivities-" + (System.nanoTime() & 0xFF));
+  
       EigencutsSensitivityJob.runJob(evs, D, Wt.getRowPath(), halflife, tau, median(D), epsilon, sensitivities);
 
+      DistributedRowMatrix S = new DistributedRowMatrix(
+    		  sensitivities, new Path(outputCalc, "tmpSense"), numDims, numDims);
+      
+      S.setConf(depConf);
+    
+      System.out.println("A path:" + A.getRowPath());
+      System.out.println("S path:" + S.getRowPath());
+      
+      Path diagAffValues = new Path(outputCalc, "diagAffValues");
+      DiagonalAffinityJob.runJob(A.getRowPath(), S.getRowPath(), diagAffValues, numDims);
+      
+      System.exit(1);
       // perform the cuts (step 6)
       input = new Path(outputTmp, "nextAff-" + (System.nanoTime() & 0xFF));
       numCuts = EigencutsAffinityCutsJob.runjob(A.getRowPath(), sensitivities, input, conf);

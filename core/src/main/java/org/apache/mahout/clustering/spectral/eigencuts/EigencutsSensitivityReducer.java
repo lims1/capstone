@@ -48,6 +48,9 @@ public class EigencutsSensitivityReducer extends
         v.setQuick(n.getColumn(), n.getSensitivity());
       }
     }
+    System.out.println("SensitivitityReducer Key:" + key);
+    System.out.println("SensitivitityReducer Value:" + v);
+    
     context.write(key, new VectorWritable(v));
   }
 }
