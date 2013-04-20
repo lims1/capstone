@@ -159,6 +159,7 @@ public class EigencutsDriver extends AbstractJob {
 
 		A.setConf(depConf);
 
+
 		// Construct the diagonal matrix D (represented as a vector)
 		Vector D = MatrixDiagonalizeJob.runJob(affSeqFiles, numDims);
 		System.out.println("Diagonal:" + D);
@@ -245,12 +246,31 @@ public class EigencutsDriver extends AbstractJob {
 
 			System.out.println("Number of cuts:" + numCuts);
 			
-			//Insert the last mapreduce job here//
-			
-			
-		} while (numCuts > 0 && iterations < cutiters);
+			if (numCuts > 0 && iterations < cutiters){
+				
+				
+				Path nextIterationPathMain = new Path("nextIterationMainPath");
+				outputCalc = new Path(nextIterationPathMain, "calculations");
+				
+				Path newAff = new Path(outputCalc, "afftmp");
 
-		// TODO: MAHOUT-517: Eigencuts needs an output format
+				AffinityReconstructJob.runJob(A.getRowPath(), newAff, numDims);
+
+				A = new DistributedRowMatrix(affSeqFiles,
+					new Path(outputCalc, "afftmp"), numDims, numDims);
+				
+				HadoopUtil.delete(conf, output);
+				
+				output = nextIterationPathMain;
+					
+			}
+		
+		
+		
+		} while (numCuts > 0 && iterations < cutiters);
+		
+			
+		
 	}
 
 	/**
