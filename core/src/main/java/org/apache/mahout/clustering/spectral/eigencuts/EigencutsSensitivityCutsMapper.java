@@ -83,27 +83,24 @@ public class EigencutsSensitivityCutsMapper
 
 		SequentialAccessSparseVector v;
 		for (int i = 0; i < ev.size(); i++) {
-			
+
 			v = new SequentialAccessSparseVector(conf.getInt(
 					EigencutsKeys.AFFINITY_DIMENSIONS, Integer.MAX_VALUE), 100);
-			
+
 			for (int j = 0; j < ev.size(); j++) {
 				double sij = performSensitivityCalculation(eigenvalue,
 						ev.get(i), ev.get(j), diagonal.get(i), diagonal.get(j));
 
-				if (sij < threshold) 
-					{
-						v.setQuick(j, sij);
-					}
+				if (sij < threshold) {
+					v.setQuick(j, sij);
 				}
-					// Tag the vectors coming in to this mapper as 1 for label
-					int[] k = { 1 };
-					MultiLabelVectorWritable node = new MultiLabelVectorWritable(
-							v, k);
-					context.write(new IntWritable(i), node);
 			}
+			// Tag the vectors coming in to this mapper as 1 for label
+			int[] k = { 1 };
+			MultiLabelVectorWritable node = new MultiLabelVectorWritable(v, k);
+			context.write(new IntWritable(i), node);
 		}
-	
+	}
 
 	/**
 	 * Helper method, performs the actual calculation. Looks something like
@@ -115,7 +112,6 @@ public class EigencutsSensitivityCutsMapper
 	 */
 	private double performSensitivityCalculation(double eigenvalue, double evi,
 			double evj, double diagi, double diagj) {
-
 
 		double firsthalf = Functions.LOGARITHM.apply(2)
 				/ (eigenvalue * Functions.LOGARITHM.apply(eigenvalue) * Functions.LOGARITHM

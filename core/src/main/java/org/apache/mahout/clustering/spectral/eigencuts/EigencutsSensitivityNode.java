@@ -24,57 +24,57 @@ import java.io.IOException;
 import org.apache.hadoop.io.Writable;
 
 /**
- * This class allows the storage of computed sensitivities in an
- * unordered fashion, instead having each sensitivity track its
- * own (i, j) coordinate. Thus these objects can be stored as elements
- * in any list or, in particular, Writable array.
+ * This class allows the storage of computed sensitivities in an unordered
+ * fashion, instead having each sensitivity track its own (i, j) coordinate.
+ * Thus these objects can be stored as elements in any list or, in particular,
+ * Writable array.
  */
 public class EigencutsSensitivityNode implements Writable {
-  
-  private int row;
-  private int column;
-  private double sensitivity;
-  
-  public EigencutsSensitivityNode(int i, int j, double s) {
-    row = i;
-    column = j;
-    sensitivity = s;
-  }
 
-  public EigencutsSensitivityNode()
-  {
-	   row = 0;
-	   column = 0;
-	   sensitivity = 0;
-  }
-  @Override
-  public void readFields(DataInput in) throws IOException {
-    this.row = in.readInt();
-    this.column = in.readInt();
-    this.sensitivity = in.readDouble();
-  }
+	private int row;
+	private int column;
+	private double sensitivity;
 
-  @Override
-  public void write(DataOutput out) throws IOException {
-    out.writeInt(row);
-    out.writeInt(column);
-    out.writeDouble(sensitivity);
-  }
+	public EigencutsSensitivityNode(int i, int j, double s) {
+		row = i;
+		column = j;
+		sensitivity = s;
+	}
 
-  public int getRow() {
-    return row;
-  }
+	public EigencutsSensitivityNode() {
+		row = 0;
+		column = 0;
+		sensitivity = 0;
+	}
 
-  public int getColumn() {
-    return column;
-  }
+	@Override
+	public void readFields(DataInput in) throws IOException {
+		this.row = in.readInt();
+		this.column = in.readInt();
+		this.sensitivity = in.readDouble();
+	}
 
-  public double getSensitivity() {
-    return sensitivity;
-  }
-  
-  public String toString()
-  {
-	  return ("Row: " + row + "\n" + "Column: " + column + "\n" + "Sensitivity: " + sensitivity + "\n");
-  }
+	@Override
+	public void write(DataOutput out) throws IOException {
+		out.writeInt(row);
+		out.writeInt(column);
+		out.writeDouble(sensitivity);
+	}
+
+	public int getRow() {
+		return row;
+	}
+
+	public int getColumn() {
+		return column;
+	}
+
+	public double getSensitivity() {
+		return sensitivity;
+	}
+
+	public String toString() {
+		return ("Row: " + row + "\n" + "Column: " + column + "\n"
+				+ "Sensitivity: " + sensitivity + "\n");
+	}
 }

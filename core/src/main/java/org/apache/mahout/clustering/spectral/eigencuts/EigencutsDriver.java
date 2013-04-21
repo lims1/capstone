@@ -160,7 +160,6 @@ public class EigencutsDriver extends AbstractJob {
 
 		A.setConf(depConf);
 
-
 		// Construct the diagonal matrix D (represented as a vector)
 		Vector D = MatrixDiagonalizeJob.runJob(affSeqFiles, numDims);
 
@@ -240,38 +239,34 @@ public class EigencutsDriver extends AbstractJob {
 
 			// Need a way to check to see if there are any sensitivites in the
 			// sensitivity matrix at all
-			numCuts = EigencutsSensitivityCutsJob.runJob(evs, D, A.getRowPath(),
-					Wt.getRowPath(), halflife, tau, median(D), epsilon,
-					sensitivities);
+			numCuts = EigencutsSensitivityCutsJob.runJob(evs, D,
+					A.getRowPath(), Wt.getRowPath(), halflife, tau, median(D),
+					epsilon, sensitivities);
 
 			System.out.println("Number of cuts:" + numCuts);
-			
-			if (numCuts > 0 && iterations < cutiters){
-				
-				
+
+			if (numCuts > 0 && iterations < cutiters) {
+
 				Path nextIterationPathMain = new Path("nextIterationMainPath");
 				outputCalc = new Path(nextIterationPathMain, "calculations");
-				
-				affSeqFiles = new Path(outputCalc, "affreconstruct");
-				
-				AffinityReconstructJob.runJob(A.getRowPath(), affSeqFiles, numDims);
 
-				A= new DistributedRowMatrix(affSeqFiles,
-					new Path(outputCalc, "afftmp"), numDims, numDims);
+				affSeqFiles = new Path(outputCalc, "affreconstruct");
+
+				AffinityReconstructJob.runJob(A.getRowPath(), affSeqFiles,
+						numDims);
+
+				A = new DistributedRowMatrix(affSeqFiles, new Path(outputCalc,
+						"afftmp"), numDims, numDims);
 				A.setConf(depConf);
-						
+
 				HadoopUtil.delete(conf, output);
-				
+
 				output = nextIterationPathMain;
-					
+
 			}
-		
-		
-		
+
 		} while (numCuts > 0 && iterations < cutiters);
-		
-			
-		
+
 	}
 
 	/**

@@ -41,6 +41,7 @@ public class VertexWritable implements Writable {
   private String type;
   
   public VertexWritable() {
+	  
   }
 
   public VertexWritable(int i, int j, double v, String t) {
