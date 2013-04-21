@@ -42,9 +42,6 @@ public class EigencutsSensitivityCutsReducer extends
     throws IOException, InterruptedException {
     Configuration conf = context.getConfiguration();
 
-    System.out.println("You are in the reducer");
-	System.out.println("Key:" + key);
-	
    RandomAccessSparseVector aff = null;
    RandomAccessSparseVector sen = new RandomAccessSparseVector(conf.getInt(EigencutsKeys.AFFINITY_DIMENSIONS, Integer.MAX_VALUE), 100);
 	
@@ -68,8 +65,7 @@ public class EigencutsSensitivityCutsReducer extends
 			}
 		}
 	}
-	System.out.println("Aff:" + aff);
-	System.out.println("Sen:" + sen);
+
 	if(aff==null ) { return; }
    
 	Iterator<Vector.Element> itr = aff.iterateNonZero();
@@ -87,7 +83,6 @@ public class EigencutsSensitivityCutsReducer extends
 			context.getCounter(EigencutsSensitivityCutsJob.CUTSCOUNTER.NUM_CUTS).increment(1);
 		}	
 	}
-	System.out.println("Updated A matrix:" + aff);
 	
 	context.write(key, new VectorWritable(aff));
 	

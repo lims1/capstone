@@ -95,6 +95,7 @@ public class EigencutsDriver extends AbstractJob {
 		Path output = getOutputPath();
 		if (hasOption(DefaultOptionCreator.OVERWRITE_OPTION)) {
 			HadoopUtil.delete(getConf(), output);
+			HadoopUtil.delete(conf, new Path("nextIterationMainPath"));
 		}
 
 		int numDims = Integer.parseInt(getOption("dimensions"));
@@ -162,7 +163,6 @@ public class EigencutsDriver extends AbstractJob {
 
 		// Construct the diagonal matrix D (represented as a vector)
 		Vector D = MatrixDiagonalizeJob.runJob(affSeqFiles, numDims);
-		System.out.println("Diagonal:" + D);
 
 		long numCuts = 0;
 		int iterations = 0;
@@ -252,13 +252,14 @@ public class EigencutsDriver extends AbstractJob {
 				Path nextIterationPathMain = new Path("nextIterationMainPath");
 				outputCalc = new Path(nextIterationPathMain, "calculations");
 				
-				Path newAff = new Path(outputCalc, "afftmp");
-
-				AffinityReconstructJob.runJob(A.getRowPath(), newAff, numDims);
-
-				A = new DistributedRowMatrix(affSeqFiles,
-					new Path(outputCalc, "afftmp"), numDims, numDims);
+				affSeqFiles = new Path(outputCalc, "affreconstruct");
 				
+				AffinityReconstructJob.runJob(A.getRowPath(), affSeqFiles, numDims);
+
+				A= new DistributedRowMatrix(affSeqFiles,
+					new Path(outputCalc, "afftmp"), numDims, numDims);
+				A.setConf(depConf);
+						
 				HadoopUtil.delete(conf, output);
 				
 				output = nextIterationPathMain;
@@ -283,8 +284,7 @@ public class EigencutsDriver extends AbstractJob {
 			int numEigenVectors, int overshoot, Path tmp) throws IOException {
 
 		DistributedLanczosSolver solver = new DistributedLanczosSolver();
-		Path seqFiles = new Path(tmp, "eigendecomp-"
-				+ (System.nanoTime() & 0xFF));
+		Path seqFiles = new Path(tmp, "eigendecomp");
 		solver.runJob(conf, state, overshoot, true, seqFiles.toString());
 
 		// now run the verifier to trim down the number of eigenvectors

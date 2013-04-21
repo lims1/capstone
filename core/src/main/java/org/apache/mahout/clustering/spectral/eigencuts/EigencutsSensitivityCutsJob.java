@@ -35,26 +35,26 @@ import org.apache.mahout.math.VectorWritable;
 
 /**
  * 
- * This job takes in the affinity matrix and the eigenvectors. It creates
- * an n x n sensitivity matrix of the most negative sensitivities calculated from
- * the eigenvectors that pass the threshold (-log(2)/log(eigenvalue)). The reducer
- * performs the necessary cuts to the affinity matrix, while storing the cut values
- * in the diagonals. This affinity matrix is not complete and should be followed up by
- * another map reduce job 
+ * This job takes in the affinity matrix and the eigenvectors. It creates an n x
+ * n sensitivity matrix of the most negative sensitivities calculated from the
+ * eigenvectors that pass the threshold (-log(2)/log(eigenvalue)). The reducer
+ * performs the necessary cuts to the affinity matrix, while storing the cut
+ * values in the diagonals. This affinity matrix is not complete and should be
+ * followed up by another map reduce job
  * 
  * <p>
- * Overall, this creates an n-by-n (possibly sparse) affinity matrix with a maximum of
- * n^2 non-zero elements, minimum of n non-zero elements.
+ * Overall, this creates an n-by-n (possibly sparse) affinity matrix with a
+ * maximum of n^2 non-zero elements, minimum of n non-zero elements.
  * </p>
  */
 public final class EigencutsSensitivityCutsJob {
 
 	private EigencutsSensitivityCutsJob() {
 	}
-	 
+
 	enum CUTSCOUNTER {
-		    NUM_CUTS
-		  }
+		NUM_CUTS
+	}
 
 	/**
 	 * Initializes the configuration tasks, loads the needed data into the HDFS
@@ -65,13 +65,13 @@ public final class EigencutsSensitivityCutsJob {
 	 * @param diagonal
 	 *            Vector representing the diagonal matrix
 	 * @param affinityPath
-	 * 			  Path to the affinity matrix 
+	 *            Path to the affinity matrix
 	 * @param eigenvectors
 	 *            Path to the DRM of eigenvectors
 	 * @param output
 	 *            Path to the output matrix (will have between n and full-rank
 	 *            non-zero elements)
-	 * @return 
+	 * @return
 	 */
 	public static long runJob(Vector eigenvalues, Vector diagonal,
 			Path affinityPath, Path eigenvectors, double beta, double tau,
@@ -91,13 +91,9 @@ public final class EigencutsSensitivityCutsJob {
 				diagOutputPath, jobConfig);
 		// set up the rest of the job
 		jobConfig.set(EigencutsKeys.BETA, Double.toString(beta));
-		System.out.println("Set beta:" + Double.toString(beta));
 		jobConfig.set(EigencutsKeys.EPSILON, Double.toString(epsilon));
-		System.out.println("Set epsilon:" + Double.toString(epsilon));
 		jobConfig.set(EigencutsKeys.DELTA, Double.toString(delta));
-		System.out.println("Set delta:" + Double.toString(delta));
 		jobConfig.set(EigencutsKeys.TAU, Double.toString(tau));
-		System.out.println("Set tau:" + Double.toString(tau));
 
 		Job job = new Job(jobConfig, "EigencutsSensitivityJob");
 		job.setJarByClass(EigencutsSensitivityCutsJob.class);
@@ -122,13 +118,12 @@ public final class EigencutsSensitivityCutsJob {
 		job.setReducerClass(EigencutsSensitivityCutsReducer.class);
 
 		FileOutputFormat.setOutputPath(job, output);
-		System.out.println("Sensitivity output:" + output);
 
 		boolean succeeded = job.waitForCompletion(true);
 		if (!succeeded) {
 			throw new IllegalStateException("Job failed!");
 		}
-		
+
 		return job.getCounters().findCounter(CUTSCOUNTER.NUM_CUTS).getValue();
 	}
 
@@ -139,10 +134,6 @@ public final class EigencutsSensitivityCutsJob {
 		@Override
 		protected void map(IntWritable key, VectorWritable row, Context context)
 				throws IOException, InterruptedException {
-
-			System.out.println("You are in rowPathTaggerMapper");
-			System.out.println("Key:" + key);
-			System.out.println("Row:" + row.get());
 
 			// Tag the vectors coming in from affinity matrix as 0
 			int[] i = { 0 };

@@ -45,17 +45,12 @@ public class EigencutsSensitivityCutsMapper
 		super.setup(context);
 		Configuration config = context.getConfiguration();
 		beta0 = Double.parseDouble(config.get(EigencutsKeys.BETA));
-		System.out.println("Loaded beta from mapper:" + Double.toString(beta0));
 		epsilon = Double.parseDouble(config.get(EigencutsKeys.EPSILON));
-		System.out.println("Loaded epsilon from mapper:"
-				+ Double.toString(epsilon));
 		// read in the two vectors from the cache
 		eigenvalues = EigencutsVectorCache.load(
 				EigencutsKeys.EIGENVALUES_CACHE_INDEX, config);
-		System.out.println("Loaded eigenvalues:" + eigenvalues);
 		diagonal = EigencutsVectorCache.load(
 				EigencutsKeys.DIAGONAL_CACHE_INDEX, config);
-		System.out.println("Loaded diagonal:" + diagonal);
 		if (!(eigenvalues instanceof SequentialAccessSparseVector || eigenvalues instanceof DenseVector)) {
 			eigenvalues = new SequentialAccessSparseVector(eigenvalues);
 		}
@@ -68,10 +63,6 @@ public class EigencutsSensitivityCutsMapper
 	protected void map(IntWritable row, VectorWritable vector, Context context)
 			throws IOException, InterruptedException {
 
-		System.out.println("You are in sensitivityPathTaggerMapper");
-		System.out.println("Key:" + row);
-		System.out.println("Vector:" + vector.get());
-
 		// first, does this particular eigenvector even pass the required
 		// threshold?
 		double eigenvalue = Math.abs(eigenvalues.get(row.get()));
@@ -79,10 +70,8 @@ public class EigencutsSensitivityCutsMapper
 				/ Functions.LOGARITHM.apply(eigenvalue);
 		if (eigenvalue >= 1.0 || betak <= epsilon * beta0) {
 			// doesn't pass the threshold! quit
-			System.out.println("This eigenvector doesn't pass the required threshold!");
 			return;
 		}
-		System.out.println("This eigenvector passes the threshold! Calculating sensitivities...");
 		// go through the vector, performing the calculations
 		// sadly, no way to get around n^2 computations
 		// for simplicity purposes non-maximal suppression also not included for
@@ -113,7 +102,6 @@ public class EigencutsSensitivityCutsMapper
 							v, k);
 					context.write(new IntWritable(i), node);
 			}
-		System.out.println("Done.");
 		}
 	
 
