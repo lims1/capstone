@@ -19,9 +19,9 @@ if __name__ == "__main__":
     # Optional arguments.
     parser.add_argument('-o', '--original', default = None,
         help = 'If input data type is "txt", this is the path to the original cartesian data.')
-    parser.add_argument('-h', '--height', type = int, default = -1,
+    parser.add_argument('-x', '--height', type = int, default = -1,
         help = 'If input data type is "img", this is the height of the original image.')
-    parser.add_argument('-w', '--width', type = int, default = -1,
+    parser.add_argument('-y', '--width', type = int, default = -1,
         help = 'If input data type is "img", this is the width of the original image.')
 
     args = vars(parser.parse_args())
