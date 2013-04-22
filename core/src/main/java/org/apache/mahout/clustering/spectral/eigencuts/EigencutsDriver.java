@@ -158,6 +158,9 @@ public class EigencutsDriver extends AbstractJob {
 		Configuration depConf = new Configuration(conf);
 
 		A.setConf(depConf);
+		
+		// Construct the diagonal matrix D (represented as a vector)
+		Vector D = MatrixDiagonalizeJob.runJob(affSeqFiles, numDims);
 
 		long numCuts = 0;
 		int iterations = 0;
@@ -170,9 +173,6 @@ public class EigencutsDriver extends AbstractJob {
 			// 1) calculate D from A 
 			// 2) calculate L = D^-0.5 * A * D^-0.5
 			// 3) calculate eigenvectors of L
-			
-			// Construct the diagonal matrix D (represented as a vector)
-			Vector D = MatrixDiagonalizeJob.runJob(affSeqFiles, numDims);
 			
 			// Calculate the normalized Laplacian of the form: L =
 			// D^(-0.5)AD^(-0.5)
