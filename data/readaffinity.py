@@ -34,7 +34,7 @@ if __name__ == "__main__":
         i = int(key)
 
         # Loop through the values.
-        row = map(int, val.split(","))
+        row = map(float, val.split(","))
         for j in xrange(0, len(row)):
             if row[j] > 0.0:
                 A[i, j] = 1.0
