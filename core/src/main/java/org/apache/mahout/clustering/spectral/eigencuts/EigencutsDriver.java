@@ -267,6 +267,8 @@ public class EigencutsDriver extends AbstractJob {
 
 		} while (numCuts > 0 && iterations < cutiters);
 
+	    // Run a hack job to convert the affinity matrix to a text file.
+        AffinityToTextJob.runJob(A.getRowPath(), new Path(output.getParent(), "finalOutput"));
 	}
 
 	/**
