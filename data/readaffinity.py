@@ -3,7 +3,7 @@ import matplotlib.pyplot as plot
 import matplotlib.cm as cm
 import numpy as np
 import scipy.sparse as sparse
-import scipy.sparse.csgraph as csgraph\
+import scipy.sparse.csgraph as csgraph
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description = 'Eigencuts Affinity Matrix', \
@@ -19,9 +19,9 @@ if __name__ == "__main__":
     # Optional arguments.
     parser.add_argument('-o', '--original', default = None,
         help = 'If input data type is "txt", this is the path to the original cartesian data.')
-    parser.add_argument('-h', '--height', type = int, default = -1,
+    parser.add_argument('--height', type = int, default = -1,
         help = 'If input data type is "img", this is the height of the original image.')
-    parser.add_argument('-w', '--width', type = int, default = -1,
+    parser.add_argument('--width', type = int, default = -1,
         help = 'If input data type is "img", this is the width of the original image.')
 
     args = vars(parser.parse_args())
