@@ -95,7 +95,6 @@ public class EigencutsDriver extends AbstractJob {
 		Path output = getOutputPath();
 		if (hasOption(DefaultOptionCreator.OVERWRITE_OPTION)) {
 			HadoopUtil.delete(getConf(), output);
-			HadoopUtil.delete(conf, new Path("nextIterationMainPath"));
 		}
 
 		int numDims = Integer.parseInt(getOption("dimensions"));
@@ -149,7 +148,7 @@ public class EigencutsDriver extends AbstractJob {
 		// Take in the raw CSV text file and split it ourselves,
 		// creating our own SequenceFiles for the matrices to read later
 		// (similar to the style of syntheticcontrol.canopy.InputMapper)
-		Path affSeqFiles = new Path(outputCalc, "seqfile");
+		Path affSeqFiles = new Path(outputCalc, "seqfile_1");
 		AffinityMatrixInputJob.runJob(input, affSeqFiles, numDims, numDims);
 
 		// Construct the affinity matrix using the newly-created sequence files
@@ -160,9 +159,6 @@ public class EigencutsDriver extends AbstractJob {
 
 		A.setConf(depConf);
 
-		// Construct the diagonal matrix D (represented as a vector)
-		Vector D = MatrixDiagonalizeJob.runJob(affSeqFiles, numDims);
-
 		long numCuts = 0;
 		int iterations = 0;
 		Path data;
@@ -171,14 +167,18 @@ public class EigencutsDriver extends AbstractJob {
 			iterations++;
 
 			// first three steps are the same as spectral k-means:
-			// 1) calculate D from A (done above)
+			// 1) calculate D from A 
 			// 2) calculate L = D^-0.5 * A * D^-0.5
 			// 3) calculate eigenvectors of L
-
+			
+			// Construct the diagonal matrix D (represented as a vector)
+			Vector D = MatrixDiagonalizeJob.runJob(affSeqFiles, numDims);
+			
 			// Calculate the normalized Laplacian of the form: L =
 			// D^(-0.5)AD^(-0.5)
+			Path laplacian = new Path(outputCalc, "laplacian");
 			DistributedRowMatrix L = VectorMatrixMultiplicationJob.runJob(
-					affSeqFiles, D, new Path(outputCalc, "laplacian"));
+					affSeqFiles, D, laplacian);
 			L.setConf(depConf);
 
 			// (step 3) SSVD requires an array of Paths to function. So we pass
@@ -247,28 +247,33 @@ public class EigencutsDriver extends AbstractJob {
 
 			if (numCuts > 0 && iterations < cutiters) {
 
-				Path nextIterationPathMain = new Path("nextIterationMainPath");
-				outputCalc = new Path(nextIterationPathMain, "calculations");
+				
+				Path affSeqFileTmp = new Path(outputCalc, "seqfile_" + (iterations+1));
 
-				affSeqFiles = new Path(outputCalc, "affreconstruct");
-
-				AffinityReconstructJob.runJob(A.getRowPath(), affSeqFiles,
+				AffinityReconstructJob.runJob(A.getRowPath(), affSeqFileTmp,
 						numDims);
 
-				A = new DistributedRowMatrix(affSeqFiles, new Path(outputCalc,
-						"afftmp"), numDims, numDims);
+				A = new DistributedRowMatrix(affSeqFileTmp, new Path(outputCalc,
+						"afftmp_" + (iterations+1)), numDims, numDims);
 				A.setConf(depConf);
-
-				HadoopUtil.delete(conf, output);
-
-				output = nextIterationPathMain;
-
+				
+				//Remove previous seqfile
+				HadoopUtil.delete(depConf, affSeqFiles);
+				//Remove previous laplacian matrix
+				HadoopUtil.delete(depConf, laplacian);
+				//Remove previous sensitivities
+				HadoopUtil.delete(depConf,sensitivities);
+				//Remove previous SSVD
+				HadoopUtil.delete(depConf, SSVDout);
+				//Remove previous unitvectors
+				HadoopUtil.delete(depConf, unitVectors);
+				affSeqFiles = affSeqFileTmp;
 			}
 
 		} while (numCuts > 0 && iterations < cutiters);
 
 	    // Run a hack job to convert the affinity matrix to a text file.
-        AffinityToTextJob.runJob(A.getRowPath(), new Path(output.getParent(), "finalOutput"));
+        AffinityToTextJob.runJob(A.getRowPath(), new Path(outputCalc.getParent(), "finalOutput"));
 	}
 
 	/**
