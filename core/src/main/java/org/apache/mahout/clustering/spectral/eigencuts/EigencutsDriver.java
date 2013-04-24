@@ -178,7 +178,7 @@ public class EigencutsDriver extends AbstractJob {
 			// D^(-0.5)AD^(-0.5)
 			Path laplacian = new Path(outputCalc, "laplacian");
 			DistributedRowMatrix L = VectorMatrixMultiplicationJob.runJob(
-					affSeqFiles, D, laplacian);
+					A.getRowPath(), D, laplacian);
 			L.setConf(depConf);
 
 			// (step 3) SSVD requires an array of Paths to function. So we pass
@@ -235,22 +235,22 @@ public class EigencutsDriver extends AbstractJob {
 
 			// calculate sensitivities (step 4 and step 5)
 
-			Path sensitivities = new Path(outputCalc, "sensitivities");
+			Path asymmetricA = new Path(outputCalc, "asymmetricA");
 
 			// Need a way to check to see if there are any sensitivites in the
 			// sensitivity matrix at all
 			numCuts = EigencutsSensitivityCutsJob.runJob(evs, D,
-					A.getRowPath(), Wt.getRowPath(), halflife, tau, median(D),
-					epsilon, sensitivities);
+					A.getRowPath(), unitVectors, halflife, tau, median(D),
+					epsilon, asymmetricA);
 
 			System.out.println("Number of cuts:" + numCuts);
 
-			if (numCuts > 0 && iterations < cutiters) {
+			if (numCuts > 0) {
 
 				
 				Path affSeqFileTmp = new Path(outputCalc, "seqfile_" + (iterations+1));
 
-				AffinityReconstructJob.runJob(A.getRowPath(), affSeqFileTmp,
+				AffinityReconstructJob.runJob(asymmetricA, affSeqFileTmp,
 						numDims);
 
 				A = new DistributedRowMatrix(affSeqFileTmp, new Path(outputCalc,
@@ -262,7 +262,7 @@ public class EigencutsDriver extends AbstractJob {
 				//Remove previous laplacian matrix
 				HadoopUtil.delete(depConf, laplacian);
 				//Remove previous sensitivities
-				HadoopUtil.delete(depConf,sensitivities);
+				HadoopUtil.delete(depConf,asymmetricA);
 				//Remove previous SSVD
 				HadoopUtil.delete(depConf, SSVDout);
 				//Remove previous unitvectors

@@ -16,6 +16,7 @@ import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.mapreduce.lib.output.SequenceFileOutputFormat;
 import org.apache.mahout.clustering.spectral.common.VertexWritable;
 import org.apache.mahout.math.RandomAccessSparseVector;
+import org.apache.mahout.math.SequentialAccessSparseVector;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.VectorWritable;
 
@@ -80,37 +81,39 @@ public final class AffinityReconstructJob {
 		protected void reduce(IntWritable key,
 				Iterable<VertexWritable> vertices, Context context)
 				throws IOException, InterruptedException {
-
+			System.out.println("In AffinityReconstructReducer " + key.get());
 			int dimension = context.getConfiguration().getInt(
 					EigencutsKeys.AFFINITY_DIMENSIONS, Integer.MAX_VALUE);
 			RandomAccessSparseVector output = new RandomAccessSparseVector(
 					dimension);
 			Hashtable<Integer, VertexWritable> hash = new Hashtable<Integer, VertexWritable>();
-			VertexWritable diag = new VertexWritable();
 			for (VertexWritable v : vertices) {
 				if (v.getRow() != key.get()) {
-					hash.put(new Integer(v.getRow()), v);
-				} else if (v.getRow() == v.getCol()) {
-					diag = v;
-				}
-			}
-
-			for (VertexWritable v : vertices) {
-				// if it's not in this row, or it's the diagonal nothing needs
-				// to be done
-				if (v.getRow() == key.get() && v.getRow() != v.getCol()) {
-					// if there's no corresponding symmetric entry,
-					// i.e. the symmetric entry == 0 and has been cut
-					if (hash.get(new Integer(v.getCol())) == null) {
-						diag.setValue(diag.getValue() + v.getValue());
-						v.setValue(0);
-					}
-
+					hash.put(new Integer(v.getRow()), new VertexWritable(v.getRow(),v.getCol(),v.getValue(),""));
+				} else {
 					output.setQuick(v.getCol(), v.getValue());
 				}
 			}
+			
+			Iterator<Vector.Element> iter = output.iterateNonZero();
 
-			output.setQuick(key.get(), diag.getValue());
+			while (iter.hasNext()) {
+				Vector.Element v = iter.next();
+				// if it's not in this row, or it's the diagonal nothing needs
+				// to be done
+				if (v.index() != key.get()) {
+					// if there's no corresponding symmetric entry,
+					// i.e. the symmetric entry == 0 and has been cut
+					if (hash.get(new Integer(v.index())) == null) {
+						System.out.println("Cutting (row,col,val): (" + key.get() + "," + v.index() + "," + v.get() + ")");
+						output.setQuick(key.get(),output.get(key.get()) + v.get());
+						output.setQuick(v.index(),0);
+					}
+
+				}
+			}
+			
+			System.out.println("Output row: " + output);
 			context.write(key, new VectorWritable(output));
 		}
 	}
