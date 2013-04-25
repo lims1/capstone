@@ -18,6 +18,8 @@
 package org.apache.mahout.clustering.spectral.eigencuts;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
@@ -31,12 +33,12 @@ import org.apache.mahout.clustering.spectral.common.VectorMatrixMultiplicationJo
 import org.apache.mahout.common.AbstractJob;
 import org.apache.mahout.common.HadoopUtil;
 import org.apache.mahout.common.commandline.DefaultOptionCreator;
+import org.apache.mahout.math.DenseVector;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.decomposer.lanczos.LanczosState;
 import org.apache.mahout.math.hadoop.DistributedRowMatrix;
 import org.apache.mahout.math.hadoop.decomposer.DistributedLanczosSolver;
 import org.apache.mahout.math.hadoop.decomposer.EigenVerificationJob;
-import org.apache.mahout.math.hadoop.stochasticsvd.SSVDSolver;
 import org.apache.mahout.math.stats.OnlineSummarizer;
 
 public class EigencutsDriver extends AbstractJob {
@@ -155,9 +157,7 @@ public class EigencutsDriver extends AbstractJob {
 		DistributedRowMatrix A = new DistributedRowMatrix(affSeqFiles,
 				new Path(outputTmp, "afftmp"), numDims, numDims);
 
-		Configuration depConf = new Configuration(conf);
-
-		A.setConf(depConf);
+		A.setConf(conf);
 		
 		// Construct the diagonal matrix D (represented as a vector)
 		Vector D = MatrixDiagonalizeJob.runJob(affSeqFiles, numDims);
@@ -178,69 +178,67 @@ public class EigencutsDriver extends AbstractJob {
 			// D^(-0.5)AD^(-0.5)
 			Path laplacian = new Path(outputCalc, "laplacian");
 			DistributedRowMatrix L = VectorMatrixMultiplicationJob.runJob(
-					A.getRowPath(), D, laplacian);
-			L.setConf(depConf);
+					A.getRowPath(), D, new Path(outputCalc, "laplacian"), new Path(outputCalc, outputCalc) );
+			L.setConf(conf);
+			
+			int overshoot = Math.min((int) ((double) eigenrank * OVERSHOOT_MULTIPLIER), numDims);
+			DistributedLanczosSolver solver = new DistributedLanczosSolver();
+			LanczosState state = new LanczosState(L, overshoot, solver.getInitialVector(L));
+			Path lanczosSeqFiles = new Path(outputCalc, "eigenvectors");
+			
+			solver.runJob(conf,
+			              state,
+			              overshoot,
+			              true,
+			              lanczosSeqFiles.toString());
+			
+			// perform a verification
+			EigenVerificationJob verifier = new EigenVerificationJob();
+			Path verifiedEigensPath = new Path(outputCalc, "eigenverifier");
+			verifier.runJob(conf, 
+							lanczosSeqFiles, 
+							L.getRowPath(), 
+							verifiedEigensPath, 
+							true, 
+							1.0, 
+							overshoot);
+			
+			Path cleanedEigens = verifier.getCleanedEigensPath();
+			DistributedRowMatrix W = new DistributedRowMatrix(
+					cleanedEigens, new Path(cleanedEigens, "tmp"), overshoot, numDims);
+			W.setConf(conf);
 
-			// (step 3) SSVD requires an array of Paths to function. So we pass
-			// in an array of length one
-			Path[] LPath = new Path[1];
-			LPath[0] = L.getRowPath();
-
-			Path SSVDout = new Path(outputCalc, "SSVD");
-
-			SSVDSolver solveIt = new SSVDSolver(depConf, LPath, SSVDout,
-					blockHeight, // Vertical height of a q-block
-					eigenrank, oversampling, // Oversampling
-					numReducers); // # of reduce tasks
-
-			solveIt.setComputeV(false);
-			solveIt.setComputeU(true);
-			solveIt.setcUHalfSigma(true);
-			solveIt.setOverwrite(true);
-			solveIt.setQ(poweriters);
-
-			// TODO: MAHOUT-517: Comment out 'solveIt.setBroadcast(false)' line
-			// below when committing final for multiple nodes
-			solveIt.setBroadcast(false);
-
-			// setBroadcast should be set to true is running on a distributed
-			// system, but on a single
-			// machine it must be set to false. The documentation says that the
-			// default is false but
-			// the default is actually true.
-
-			solveIt.run();
-			data = new Path(solveIt.getUPath()); // Needs "new Path", getUPath
-													// method returns a String
-
-			// Normalize the rows of Wt to unit length
-			// normalize is important because it reduces the occurrence of two
-			// unique clusters combining into one
-
-			DistributedRowMatrix W = new DistributedRowMatrix(data, new Path(
-					outputCalc, "tmp"), numDims, eigenrank);
-
-			W.setConf(depConf);
-
-			DistributedRowMatrix Wt = W.transpose();
-
-			Wt.setConf(depConf);
-
-			Path unitVectors = new Path(outputCalc, "unitvectors");
-
-			UnitVectorizerJob.runJob(Wt.getRowPath(), unitVectors);
-
-			// Get eigenvalues from SSVD solver
-			Vector evs = solveIt.getSingularValues();
+			data = W.getRowPath();
+		
+		// Normalize the rows of Wt to unit length
+		// normalize is important because it reduces the occurrence of two unique clusters  combining into one 
+		Path unitVectors = new Path(outputCalc, "unitvectors");
+		
+		UnitVectorizerJob.runJob(data, unitVectors, overshoot);
+		
+		DistributedRowMatrix Wt = new DistributedRowMatrix(
+				unitVectors, new Path(unitVectors, "tmp"), eigenrank, numDims);
+		Wt.setConf(conf);
+		data = Wt.getRowPath();
+		
+		    ArrayList<Double> eigenValues = new ArrayList<Double>(eigenrank);
+		      for (int i=overshoot-1; i>=0; i--) { 
+		        eigenValues.add(state.getSingularValue(i));
+		      }
+		   
+		    System.out.println("===EIGENVALUES===");
+		    System.out.println(eigenValues);
+		    
+		    Vector evs = listToVector(eigenValues);
 
 			// calculate sensitivities (step 4 and step 5)
 
 			Path asymmetricA = new Path(outputCalc, "asymmetricA");
 
-			// Need a way to check to see if there are any sensitivites in the
+			// Need a way to check to see if there are any sensitivities in the
 			// sensitivity matrix at all
 			numCuts = EigencutsSensitivityCutsJob.runJob(evs, D,
-					A.getRowPath(), unitVectors, halflife, tau, median(D),
+					A.getRowPath(), data, halflife, tau, median(D),
 					epsilon, asymmetricA);
 
 			System.out.println("Number of cuts:" + numCuts);
@@ -255,18 +253,16 @@ public class EigencutsDriver extends AbstractJob {
 
 				A = new DistributedRowMatrix(affSeqFileTmp, new Path(outputCalc,
 						"afftmp_" + (iterations+1)), numDims, numDims);
-				A.setConf(depConf);
+				A.setConf(conf);
 				
 				//Remove previous seqfile
-				HadoopUtil.delete(depConf, affSeqFiles);
+				HadoopUtil.delete(conf, affSeqFiles);
 				//Remove previous laplacian matrix
-				HadoopUtil.delete(depConf, laplacian);
+				HadoopUtil.delete(conf, laplacian);
 				//Remove previous sensitivities
-				HadoopUtil.delete(depConf,asymmetricA);
-				//Remove previous SSVD
-				HadoopUtil.delete(depConf, SSVDout);
+				HadoopUtil.delete(conf,asymmetricA);
 				//Remove previous unitvectors
-				HadoopUtil.delete(depConf, unitVectors);
+				HadoopUtil.delete(conf, unitVectors);
 				affSeqFiles = affSeqFileTmp;
 			}
 
@@ -315,5 +311,14 @@ public class EigencutsDriver extends AbstractJob {
 		}
 		return med.getMedian();
 	}
-
+	
+	 private static Vector listToVector(Collection<Double> list) {
+		    Vector retval = new DenseVector(list.size());
+		    int index = 0;
+		    for (Double d : list) {
+		      retval.setQuick(index++, d);
+		    }
+		    return retval;
+		  }
+	
 }

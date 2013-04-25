@@ -63,9 +63,10 @@ public class EigencutsSensitivityCutsMapper
 	protected void map(IntWritable row, VectorWritable vector, Context context)
 			throws IOException, InterruptedException {
 
+		System.out.println("Row: " + row.get());
 		// first, does this particular eigenvector even pass the required
 		// threshold?
-		double eigenvalue = Math.abs(eigenvalues.get(row.get()));
+		double eigenvalue = Math.abs(eigenvalues.get(row.get())); //should be -1?
 		double betak = -Functions.LOGARITHM.apply(2)
 				/ Functions.LOGARITHM.apply(eigenvalue);
 		if (eigenvalue >= 1.0 || betak <= epsilon * beta0) {

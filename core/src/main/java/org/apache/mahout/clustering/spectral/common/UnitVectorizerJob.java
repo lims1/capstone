@@ -44,11 +44,14 @@ public final class UnitVectorizerJob {
 
   private UnitVectorizerJob() {
   }
+  
+  private static int eigenNum = 0;
 
   public static void runJob(Path input, Path output)
     throws IOException, InterruptedException, ClassNotFoundException {
     
-    Configuration conf = new Configuration();
+    System.out.println("===EIGENVECTORS===");
+	Configuration conf = new Configuration();
     Job job = new Job(conf, "UnitVectorizerJob");
     
     job.setInputFormatClass(SequenceFileInputFormat.class);
@@ -69,6 +72,33 @@ public final class UnitVectorizerJob {
     }
   }
   
+  public static void runJob(Path input, Path output, int overshoot)
+		    throws IOException, InterruptedException, ClassNotFoundException {
+		    
+		    System.out.println("===EIGENVECTORS===");
+			Configuration conf = new Configuration();
+		    Job job = new Job(conf, "UnitVectorizerJob");
+		    
+		    eigenNum = overshoot;
+		    
+		    job.setInputFormatClass(SequenceFileInputFormat.class);
+		    job.setOutputKeyClass(IntWritable.class);
+		    job.setOutputValueClass(VectorWritable.class);
+		    job.setOutputFormatClass(SequenceFileOutputFormat.class);
+		    job.setMapperClass(UnitVectorizerMapper.class);
+		    job.setNumReduceTasks(0);
+		    
+		    FileInputFormat.addInputPath(job, input);
+		    FileOutputFormat.setOutputPath(job, output);
+
+		    job.setJarByClass(UnitVectorizerJob.class);
+
+		    boolean succeeded = job.waitForCompletion(true);
+		    if (!succeeded) {
+		      throw new IllegalStateException("Job failed!");
+		    }
+		  }
+  
   public static class UnitVectorizerMapper
     extends Mapper<IntWritable, VectorWritable, IntWritable, VectorWritable> {
     
@@ -82,7 +112,17 @@ public final class UnitVectorizerJob {
       RandomAccessSparseVector out = new RandomAccessSparseVector(w);
       
       // finally write the output
-      context.write(row, new VectorWritable(out));
+       
+      System.out.println("Row: " + row.get());
+      System.out.println(out);
+      if(eigenNum != 0)
+      {
+    	  context.write(new IntWritable(eigenNum-row.get()-1), new VectorWritable(out));
+      }
+      else
+      {
+    	  context.write(row, new VectorWritable(out));
+      }
     }
     
     /**

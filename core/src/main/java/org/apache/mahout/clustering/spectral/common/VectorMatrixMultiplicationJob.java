@@ -81,6 +81,8 @@ public final class VectorMatrixMultiplicationJob {
     job.setOutputFormatClass(SequenceFileOutputFormat.class);
     job.setMapperClass(VectorMatrixMultiplicationMapper.class);
     job.setNumReduceTasks(0);
+    
+    Thread.sleep(10000);
 
     FileInputFormat.addInputPath(job, markovPath);
     FileOutputFormat.setOutputPath(job, outputPath);

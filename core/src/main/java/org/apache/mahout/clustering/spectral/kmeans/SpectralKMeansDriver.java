@@ -31,6 +31,7 @@ import org.apache.mahout.clustering.spectral.common.AffinityMatrixInputJob;
 import org.apache.mahout.clustering.spectral.common.MatrixDiagonalizeJob;
 import org.apache.mahout.clustering.spectral.common.UnitVectorizerJob;
 import org.apache.mahout.clustering.spectral.common.VectorMatrixMultiplicationJob;
+import org.apache.mahout.clustering.spectral.eigencuts.AffinityToTextJob;
 import org.apache.mahout.common.AbstractJob;
 import org.apache.mahout.common.ClassUtils;
 import org.apache.mahout.common.HadoopUtil;
@@ -211,7 +212,12 @@ public class SpectralKMeansDriver extends AbstractJob {
 			solveIt.setQ(poweriters);
 			//solveIt.setBroadcast(false);
 			solveIt.run();
-			data = new Path(solveIt.getUPath());
+			data = new Path(solveIt.getUPath());	
+			DistributedRowMatrix W = new DistributedRowMatrix(
+					data, new Path(outputCalc, "tmp"), clusters, numDims);
+			W.setConf(depConf);
+			DistributedRowMatrix Wt = W.transpose();
+			data = Wt.getRowPath();
 		} else {
 			// Perform eigen-decomposition using LanczosSolver
 			// since some of the eigen-output is spurious and will be eliminated
@@ -243,8 +249,7 @@ public class SpectralKMeansDriver extends AbstractJob {
 			DistributedRowMatrix W = new DistributedRowMatrix(
 					cleanedEigens, new Path(cleanedEigens, "tmp"), clusters, numDims);
 			W.setConf(depConf);
-			DistributedRowMatrix Wtrans = W.transpose();
-			data = Wtrans.getRowPath();
+			data = W.getRowPath();
 		}
 		
 		// Normalize the rows of Wt to unit length
@@ -266,5 +271,12 @@ public class SpectralKMeansDriver extends AbstractJob {
 		Path answer = new Path(output, "kmeans_out");
 		KMeansDriver.run(conf, data, initialclusters, answer,
 				measure,convergenceDelta, maxIterations, true, 0.0, false);
-    }
+		System.out.println("Answer row path:" + answer);
+		A = new DistributedRowMatrix(
+				answer, new Path(outputCalc, "afftmp"), clusters, numDims); 
+		A.setConf(depConf);
+		System.out.println("A ROW PATH:" + A.getRowPath());
+		Thread.sleep(10000);
+		AffinityToTextJob.runJob(A.getRowPath(), new Path(outputCalc.getParent(), "finalOutput"));
+	}
 }
