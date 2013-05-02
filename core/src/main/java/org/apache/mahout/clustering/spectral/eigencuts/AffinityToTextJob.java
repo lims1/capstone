@@ -6,6 +6,7 @@ import java.util.Iterator;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
@@ -38,7 +39,7 @@ public final class AffinityToTextJob {
         // Job formats.
         job.setMapOutputKeyClass(Text.class);
         job.setMapOutputValueClass(Text.class);
-        job.setOutputKeyClass(Text.class);
+        job.setOutputKeyClass(NullWritable.class);
         job.setOutputValueClass(Text.class);
         
         // Reflection.
@@ -49,24 +50,18 @@ public final class AffinityToTextJob {
         return job.waitForCompletion(true);
     }
     
-    public static class AffinityToTextMapper extends Mapper<IntWritable, VectorWritable, Text, Text> {
+    public static class AffinityToTextMapper extends Mapper<IntWritable, VectorWritable, NullWritable, Text> {
         
         @Override
         public void map(IntWritable key, VectorWritable v, Context context)
                 throws IOException, InterruptedException {
-            // Simply convert the key and value to text formats.
-            Text outKey = new Text("" + key.get());
-            StringBuilder outVal = new StringBuilder();
-            Vector vector = v.get();
-            Iterator<Vector.Element> iter = vector.iterator();
+            // Output format same as input format: row,col,val
+            Iterator<Vector.Element> iter = v.get().iterateNonZero();
             while (iter.hasNext()) {
                 Vector.Element e = iter.next();
-                outVal.append(e.get());
-                if (iter.hasNext()) {
-                    outVal.append(",");
-                }
+                String outValue = String.format("%s,%s,%s", key.get(), e.index(), e.get());
+                context.write(NullWritable.get(), new Text(outValue));
             }
-            context.write(outKey, new Text(outVal.toString()));
         }
     }
 }

@@ -29,16 +29,9 @@ if __name__ == "__main__":
 
     # Read the data.
     for line in file(args['input']):
-        # It will be of the format: <key>\t<comma-separated values>
-        key, val = line.strip().split("\t")
-        i = int(key)
-
-        # Loop through the values.
-        row = map(float, val.split(","))
-        for j in xrange(0, len(row)):
-            if row[j] > 0.0:
-                A[i, j] = 1.0
-                A[j, i] = 1.0
+        # It will be of the format: <row, col, val>
+        row, col, val = line.strip().split(",")
+        A[int(row), int(col)] = float(val)
 
     # Find the connected components!
     numConn, connMap = csgraph.connected_components(A, directed = False)
